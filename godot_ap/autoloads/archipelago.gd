@@ -1052,6 +1052,10 @@ func init_command_manager(can_connect: bool, server_autofills: bool = true):
 			.add_disable(is_not_connected))
 		cmd_manager.register_command(ConsoleCommand.new("!players")
 			.add_disable(is_not_connected))
+	# TODO: /giftbox_open [accepts_any=true] [traits...]
+	# TODO: /giftbox_close
+	# TODO: /giftbox_status
+	# TODO: /send_gift [name] [item_name] [amount=1]
 	cmd_manager.setup_basic_commands()
 	if OS.is_debug_build():
 		cmd_manager.register_command(ConsoleCommand.new("/send").debug()

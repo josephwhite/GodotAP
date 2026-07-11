@@ -60,6 +60,15 @@ func get_player_name(plyr_id: int = -1, alias := true) -> String:
 	var name = get_player(plyr_id).get_name(alias)
 	if not name: name = "Player %d" % plyr_id
 	return name
+## Returns a player's slot for the given name (or alias)
+## TODO: Can this be more efficient?
+## TODO: Handle teams
++func get_slot_from_name(name: String) -> int:
++	var lower := name.to_lower()
++	for p in players:
++		if p.get_name(true).to_lower() == lower or p.get_name(false).to_lower() == lower:
++			return p.slot
++	return -1
 ## Returns the game name for the given player ID (or the current slot)
 func get_game_for_player(plyr_id: int = -1) -> String:
 	return get_slot(plyr_id).game
