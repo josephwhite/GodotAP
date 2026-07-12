@@ -1,9 +1,14 @@
 class_name GiftBoxMetadata
 
+## If the giftbox is currently open. Gifts should not be sent to closed giftboxes.
 var is_open: bool = true
+## Whether this player can and will try to process any gift sent to them. If false, only gifts from the same game or following the desired_traits are accepted.
 var accepts_any_gift: bool = true
+## The list of traits that this giftbox can process. If "accepts_any_gift" is true, these traits can remain empty, or be used to express preferences.
 var desired_traits: Array[String] = []
+## The minimum data version that this giftbox will accept. Gifts that have been created using an older data version than this value should not be sent to this giftbox.
 var minimum_gift_data_version: int = 1
+## The maximum data version that this giftbox will accept. Gifts that have been created using a newer data version than this value should not be sent to this giftbox.
 var maximum_gift_data_version: int = 3
 
 static func from(json: Dictionary) -> GiftBoxMetadata:
@@ -32,3 +37,6 @@ func to_json() -> Dictionary:
 		"maximum_gift_data_version": maximum_gift_data_version,
 	}
 	return json
+
+func _to_string() -> String:
+	return "GIFTBOX(%s, %s, [%s],%d-%d)" % [is_open, accepts_any_gift, ", ".join(desired_traits), minimum_gift_data_version, maximum_gift_data_version]

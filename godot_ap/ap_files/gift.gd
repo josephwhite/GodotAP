@@ -37,7 +37,7 @@ static func from(json: Dictionary) -> Gift:
 				var gt := GiftTrait.from(t)
 				if not gt.gift_trait.is_empty():
 					v.traits.append(gt)
-
+	return v
 
 func to_json() -> Dictionary:
 	# TODO: Suport Data Version 1-2
@@ -57,6 +57,6 @@ func to_json() -> Dictionary:
 	if item_value >= 0:
 		json["item_value"] = item_value
 	return json
-	
+
 func _to_string() -> String:
 	return "GIFT(%s, %s x%d, %d->%d, team %d->%d)" % [id, item_name, amount, sender_slot, receiver_slot, sender_team, receiver_team]
