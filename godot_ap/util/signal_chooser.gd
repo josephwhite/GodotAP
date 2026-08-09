@@ -1,60 +1,70 @@
 class_name SignalChooser
 
-static var active_choosers: Array[SignalChooser]
+const _active_choosers = []
+const _handler_state = {
+	"handlers": []
+}
 
-signal chosen(idx: int)
-var _choice: int = -1
-var choices: Array[Callable] = []
+signal chosen(idx)
 
-func _choose(idx: int) -> void:
+var _choice = -1
+var choices = []
+
+func _choose(idx):
 	assert(idx > -1)
 	if _choice > -1: return
 	_choice = idx
-	choices[idx].call()
-	chosen.emit(idx)
-	SignalChooser.deregister(self)
+	choices[idx].call_func()
+	emit_signal("chosen", idx)
+	_deregister(self)
 
-func _reg_signal(sig: Signal, idx: int) -> void:
-	await sig
-	_choose(idx)
-func _reg_call(proc: Callable, idx: int) -> void:
-	await proc.call()
+func _reg_signal(sig, idx):
+	var h = _SigHandler.new()
+	h.chooser = self
+	h.idx = idx
+	_handler_state.handlers.append(h)
+	sig.connect(h, "_on_signal", [], CONNECT_ONESHOT)
+
+func _reg_call(proc, idx):
+	proc.call_func()
 	_choose(idx)
 
-func register_signal(sig: Signal, on_chosen: Callable) -> SignalChooser:
-	SignalChooser.register(self)
+func register_signal(sig, on_chosen):
+	_register(self)
 	choices.append(on_chosen)
 	_reg_signal(sig, choices.size()-1)
 	return self
 
-func register_call(proc: Callable, on_chosen: Callable) -> SignalChooser:
-	SignalChooser.register(self)
+func register_call(proc, on_chosen):
+	_register(self)
 	choices.append(on_chosen)
 	_reg_call(proc, choices.size()-1)
 	return self
 
-func register_multiple(causes: Array, effects: Array[Callable]) -> SignalChooser:
+func register_multiple(causes, effects):
 	assert(causes.size() == effects.size())
 	for q in causes.size():
-		if causes[q] is Signal:
-			register_signal(causes[q], effects[q])
-		elif causes[q] is Callable:
-			register_call(causes[q], effects[q])
-		else: assert(false)
+		register_signal(causes[q], effects[q])
 	return self
 
-func finished() -> int:
+func finished():
 	if _choice < 0:
-		await chosen
+		yield(self, "chosen")
 	return _choice
 
-func is_finished() -> bool:
+func is_finished():
 	return _choice > -1
 
-static func register(chooser: SignalChooser) -> void:
-	if chooser not in active_choosers:
-		active_choosers.append(chooser)
+static func _register(chooser):
+	if not (chooser in _active_choosers):
+		_active_choosers.append(chooser)
 
-static func deregister(chooser: SignalChooser) -> void:
-	if chooser in active_choosers:
-		active_choosers.erase(chooser)
+static func _deregister(chooser):
+	if chooser in _active_choosers:
+		_active_choosers.erase(chooser)
+
+class _SigHandler extends Reference:
+	var chooser
+	var idx
+	func _on_signal():
+		chooser._choose(idx)

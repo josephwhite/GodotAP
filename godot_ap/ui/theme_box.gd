@@ -1,11 +1,11 @@
 class_name ThemeBox extends CheckBox
 
-signal set_theme(path: String)
-@export var target_theme_path: String
+signal set_theme(path)
+export var target_theme_path = ""
 
-func _ready() -> void:
-	toggled.connect(_on_toggle)
+func _ready():
+	connect("toggled", self, "_on_toggle")
 
-func _on_toggle(b: bool) -> void:
+func _on_toggle(b):
 	if b:
-		set_theme.emit(target_theme_path)
+		emit_signal("set_theme", target_theme_path)

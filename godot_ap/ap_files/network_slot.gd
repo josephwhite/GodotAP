@@ -1,18 +1,18 @@
 class_name NetworkSlot
 
-var name : String
-var game: String
-var type: int #spectator = 0x00, player = 0x01, group = 0x02
-var group_members: Array[int] = []
+var name
+var game
+var type
+var group_members = []
 
-static func from(json: Dictionary) -> NetworkSlot:
+static func from(json):
 	if json["class"] != "NetworkSlot":
 		return null
-	var v := NetworkSlot.new()
+	var v = Util._ap_load("ap_files/network_slot.gd").new()
 	v.name = json["name"]
 	v.game = json["game"]
 	v.type = json["type"]
-	v.group_members.assign(json["group_members"])
+	v.group_members = json["group_members"].duplicate()
 	return v
 
 func _to_string():

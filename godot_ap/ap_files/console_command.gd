@@ -3,91 +3,102 @@ class_name ConsoleCommand
 const HELPTEXT_INDENT = 20
 
 class CmdHelpText:
-	var args: String = ""
-	var text: String = ""
-	var cond: Callable #Callable[]->bool
+	var args = ""
+	var text = ""
+	var cond_target
+	var cond_method
 
-var text: String = ""
-var help_text: Array[CmdHelpText] = []
-var call_proc: Variant = null # Callable(ConsoleCommand,String)->void | null
-var autofill_proc: Variant = null # Callable(String)->Array[String] | null
-var disabled_procs: Array[Callable] = [] # [Callable()->bool]
-var _debug: bool = false
+var text = ""
+var help_text = []
+var call_target = null
+var call_method = ""
+var autofill_proc = null
+var disabled_targets = []
+var disabled_methods = []
+var _debug = false
 
 #region Constructor and builder-pattern funcs
-func _init(txt: String):
+func _init(txt):
 	text = txt
 
-func set_call(caller: Callable) -> ConsoleCommand:
-	call_proc = caller
+func set_call(target, method):
+	call_target = target
+	call_method = method
 	return self
-func set_autofill(caller: Variant) -> ConsoleCommand:
-	assert(caller is bool or caller is Callable)
+func set_autofill(caller):
 	autofill_proc = caller
 	return self
-func add_help(args: String, helptxt: String) -> ConsoleCommand:
-	var ht := CmdHelpText.new()
+func add_help(args, helptxt):
+	var ht = CmdHelpText.new()
 	ht.args = args
 	ht.text = helptxt
 	help_text.append(ht)
 	return self
-func add_help_cond(args: String, helptxt: String, cond: Callable) -> ConsoleCommand:
+func add_help_cond(args, helptxt, cond_target, cond_method):
 	add_help(args, helptxt)
-	help_text.back().cond = cond
+	help_text.back().cond_target = cond_target
+	help_text.back().cond_method = cond_method
 	return self
-func add_disable(proc: Callable) -> ConsoleCommand:
-	disabled_procs.append(proc)
+func add_disable(target, method):
+	disabled_targets.append(target)
+	disabled_methods.append(method)
 	return self
-func debug(state := true) -> ConsoleCommand:
+func debug(state = true):
 	_debug = state
 	return self
 #endregion
 
-func is_debug() -> bool:
+func is_debug():
 	return _debug
 
-func get_helptext() -> String:
-	var s := ""
+func _is_cond_enabled(ht):
+	if ht.cond_target == null:
+		return true
+	return not ht.cond_target.call(ht.cond_method)
+
+func get_helptext():
+	var s = ""
 	for ht in help_text:
-		if ht.cond and not ht.cond.call(): continue
-		s += "%s %s\n    %s\n" % [text,ht.args,ht.text.replace("\n","\n    ")]
+		if _is_cond_enabled(ht):
+			s += "%s %s\n    %s\n" % [text,ht.args,ht.text.replace("\n","\n    ")]
 	return s
-func output_helptext(console: BaseConsole, target = null) -> void:
-	var texts: Array[CmdHelpText] = []
+func output_helptext(console, target = null):
+	var texts = []
 	for ht in help_text:
-		if ht.cond and not ht.cond.call(): continue
-		texts.append(ht)
+		if _is_cond_enabled(ht):
+			texts.append(ht)
 	if not target:
 		for ht in texts:
-			console.add(BaseConsole.make_text("%s %s" % [text,ht.args], "", AP.ComplexColor.as_special(AP.SpecialColor.UI_MESSAGE)))
-			var indent := BaseConsole.make_indent(HELPTEXT_INDENT)
+			console.add(BaseConsole.make_text("%s %s" % [text,ht.args], "", APColors.ComplexColor.as_special(APColors.SpecialColor.UI_MESSAGE)))
+			var indent = BaseConsole.make_indent(HELPTEXT_INDENT)
 			console.add(indent)
-			indent.add_child(BaseConsole.make_text(ht.text, "", AP.ComplexColor.as_special(AP.SpecialColor.UI_MESSAGE)))
+			indent.add_child(BaseConsole.make_text(ht.text, "", APColors.ComplexColor.as_special(APColors.SpecialColor.UI_MESSAGE)))
 	elif target is ConsoleFoldableContainer:
 		for ht in texts:
-			target.add(BaseConsole.make_text("%s %s" % [text,ht.args], "", AP.ComplexColor.as_special(AP.SpecialColor.UI_MESSAGE)))
+			target.add(BaseConsole.make_text("%s %s" % [text,ht.args], "", APColors.ComplexColor.as_special(APColors.SpecialColor.UI_MESSAGE)))
 			target.add(console.make_header_spacing(0))
-			var indent := BaseConsole.make_indent(HELPTEXT_INDENT)
+			var indent = BaseConsole.make_indent(HELPTEXT_INDENT)
 			target.add(indent)
-			var vbox := VBoxContainer.new()
+			var vbox = VBoxContainer.new()
 			indent.add_child(vbox)
-			vbox.add_child(BaseConsole.make_text(ht.text, "", AP.ComplexColor.as_special(AP.SpecialColor.UI_MESSAGE)))
+			vbox.add_child(BaseConsole.make_text(ht.text, "", APColors.ComplexColor.as_special(APColors.SpecialColor.UI_MESSAGE)))
 			vbox.add_child(console.make_header_spacing(0))
 
 	elif target is Container:
 		for ht in texts:
-			target.add_child(BaseConsole.make_text("%s %s" % [text,ht.args], "", AP.ComplexColor.as_special(AP.SpecialColor.UI_MESSAGE)))
+			target.add_child(BaseConsole.make_text("%s %s" % [text,ht.args], "", APColors.ComplexColor.as_special(APColors.SpecialColor.UI_MESSAGE)))
 			target.add_child(console.make_header_spacing(0))
 			target.add_child(BaseConsole.make_indent(HELPTEXT_INDENT))
-			target.add_child(BaseConsole.make_text(ht.text, "", AP.ComplexColor.as_special(AP.SpecialColor.UI_MESSAGE)))
+			target.add_child(BaseConsole.make_text(ht.text, "", APColors.ComplexColor.as_special(APColors.SpecialColor.UI_MESSAGE)))
 			target.add_child(console.make_header_spacing(0))
 			target.add_child(BaseConsole.make_indent(-HELPTEXT_INDENT))
-func output_usage(console: BaseConsole) -> void:
-	console.add(BaseConsole.make_text("Usage:\n%s" % get_helptext(), "", AP.ComplexColor.as_special(AP.SpecialColor.UI_MESSAGE)))
+func output_usage(console):
+	console.add(BaseConsole.make_text("Usage:\n%s" % get_helptext(), "", APColors.ComplexColor.as_special(APColors.SpecialColor.UI_MESSAGE)))
 
-func is_disabled() -> bool:
-	for proc in disabled_procs:
-		if proc.call(): return true
+func is_disabled():
+	for i in disabled_targets.size():
+		if disabled_targets[i].call(disabled_methods[i]):
+			return true
 	return false
 
 func _to_string():

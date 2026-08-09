@@ -1,7 +1,13 @@
+# Godot 3.6 specific ignores
+.import/
+export_presets.cfg
+
 # Godot 4+ specific ignores
 .godot/
-export_presets.cfg
 
 # 
 build/
 todo.txt
+
+# Staged commit message (git commit -F commit.txt)
+commit.txt

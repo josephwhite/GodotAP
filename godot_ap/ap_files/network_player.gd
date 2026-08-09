@@ -1,22 +1,22 @@
 class_name NetworkPlayer
 
-var team: int
-var slot: int
-var alias := ""
-var name : String
+var team
+var slot
+var alias = ""
+var name
 
-func get_slot() -> NetworkSlot:
-	return Archipelago.conn.get_slot(slot)
-func get_name(use_alias := true) -> String:
-	var ret := ""
+func get_slot():
+	return Util._get_ap().conn.get_slot(slot)
+func get_name(use_alias = true):
+	var ret = ""
 	if use_alias: ret = alias
 	if not ret: ret = name
 	return ret
 
-static func from(json: Dictionary) -> NetworkPlayer:
+static func from(json):
 	if json["class"] != "NetworkPlayer":
 		return null
-	var v := NetworkPlayer.new()
+	var v = Util._ap_load("ap_files/network_player.gd").new()
 	v.team = json["team"]
 	v.slot = json["slot"]
 	v.name = json["name"]
@@ -28,5 +28,5 @@ static func from(json: Dictionary) -> NetworkPlayer:
 
 func _to_string():
 	return "PLAYER(%s[%s],team %d,slot %d)" % [name,alias,team,slot]
-func output() -> ConsoleLabel:
+func output():
 	return BaseConsole.make_player(slot)

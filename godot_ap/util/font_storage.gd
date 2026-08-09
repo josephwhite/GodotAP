@@ -1,15 +1,15 @@
 class_name FontStorage
 
-func _init(_base_font: Font):
+func _init(_base_font):
 	populate(_base_font)
 
-func populate(_base_font: Font):
+func populate(_base_font):
 	base_font = _base_font
 	bold_font = Util.font_mod(_get_font_for_mod(), true, false)
 	italic_font = Util.font_mod(_get_font_for_mod(), false, true)
 	bold_italic_font = Util.font_mod(_get_font_for_mod(), true, true)
 
-func get_font(bold: bool, italic: bool) -> Font:
+func get_font(bold, italic):
 	if not italic:
 		if not bold:
 			return base_font
@@ -22,14 +22,9 @@ func get_font(bold: bool, italic: bool) -> Font:
 			return bold_italic_font
 
 func _get_font_for_mod():
-	var _font: Font
-	if base_font is FontVariation or base_font is SystemFont:
-		_font = base_font.duplicate()
-	else:
-		_font = base_font
-	return _font
+	return base_font.duplicate() if base_font else null
 
-var base_font: Font
-var bold_font: Font
-var italic_font: Font
-var bold_italic_font: Font
+var base_font
+var bold_font
+var italic_font
+var bold_italic_font

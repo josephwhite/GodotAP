@@ -1,7 +1,7 @@
-@tool class_name ConsoleContainer extends VBoxContainer
+tool
+class_name ConsoleContainer extends VBoxContainer
 
-@export_group("Nodes")
-@export var console_cont: Container
-@export var console: BaseConsole
-@export var typing_bar: TypingBar
-@export var margin: MarginContainer
+export(NodePath) var console_cont
+export(NodePath) var console
+export(NodePath) var typing_bar
+export(NodePath) var margin

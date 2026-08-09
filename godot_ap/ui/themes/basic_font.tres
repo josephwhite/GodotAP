@@ -1,12 +1,11 @@
-[gd_resource type="FontVariation" load_steps=4 format=3 uid="uid://bsf22ltaya6h0"]
+[gd_resource type="DynamicFont" load_steps=4 format=2]
 
-[ext_resource type="FontFile" uid="uid://dbixaqt6tnh4p" path="res://godot_ap/ui/themes/NotoSans-VariableFont_wdth,wght.ttf" id="1_gawu5"]
-[ext_resource type="FontFile" uid="uid://cqtcjq721rgfh" path="res://godot_ap/ui/themes/NotoEmoji-VariableFont_wght.ttf" id="2_0piqr"]
-[ext_resource type="FontFile" uid="uid://b7tr0eceg78dk" path="res://godot_ap/ui/themes/NotoSansSymbols2-Regular.ttf" id="4_vsi4g"]
+[ext_resource type="DynamicFontData" path="NotoSans-VariableFont_wdth,wght.ttf" id=1]
+[ext_resource type="DynamicFontData" path="NotoEmoji-VariableFont_wght.ttf" id=2]
+[ext_resource type="DynamicFontData" path="NotoSansSymbols2-Regular.ttf" id=4]
 
 [resource]
-fallbacks = Array[Font]([ExtResource("2_0piqr"), ExtResource("4_vsi4g")])
-base_font = ExtResource("1_gawu5")
-opentype_features = {
-1667329140: 0
-}
+size = 20
+fallback/0 = ExtResource(2)
+fallback/1 = ExtResource(4)
+font_data = ExtResource(1)

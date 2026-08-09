@@ -1,63 +1,82 @@
 class_name SliderBox extends MarginContainer
 
-@export var total_slide_dur: float = 0.5
-@onready var row: HBoxContainer = $Row
-@onready var handle: Control = $Row/Handle
-@onready var handle_label: CustomLabel = $Row/Handle/Margin/CustomLabel
-@onready var box: Control = $Row/Box
-@onready var connect_btn: Button = $Row/Box/Margins/VBox/ButtonRow/ConnectBtn
-@onready var disconnect_btn: Button = $Row/Box/Margins/VBox/ButtonRow/DisconnectBtn
-var is_open := false :
-	set(val):
-		if is_open != val:
-			is_open = val
-			handle_label.text = "🞂" if is_open else "🞀"
-var _slide_tween: Tween = null
-func _ready():
-	handle.gui_input.connect(_button_input)
-	row.custom_minimum_size.x = handle.size.x + box.size.x
-	row.custom_minimum_size.y = max(handle.size.y, box.size.y)
-	row.add_theme_constant_override("separation", 0)
-	row.reset_size()
-	custom_minimum_size = Vector2.ZERO
-	reset_size()
-	Archipelago.connected.connect(func(_conn, _json):
-		connect_btn.disabled = true
-		disconnect_btn.disabled = false
-		if Archipelago.AP_CONSOLE_CONNECTION_AUTO:
-			slide_to(false))
-	Archipelago.disconnected.connect(func():
-		connect_btn.disabled = false
-		disconnect_btn.disabled = true
-		if Archipelago.AP_CONSOLE_CONNECTION_AUTO:
-			slide_to(true))
-	if Archipelago.AP_CONSOLE_CONNECTION_AUTO or Archipelago.AP_CONSOLE_CONNECTION_OPEN:
-		is_open = true
-	_set_open_x(0 if is_open else (box.size.x as int))
+const _ap_state = {"ref": null}
+static func _get_ap():
+	if _ap_state.ref == null:
+		_ap_state.ref = Util._get_ap()
+	return _ap_state.ref
 
-func slide_to(open: bool) -> void:
+export var total_slide_dur = 0.5
+onready var row = $Row
+onready var handle = $Row/Handle
+onready var handle_label = $Row/Handle/Margin/CustomLabel
+onready var box = $Row/Box
+onready var connect_btn = $Row/Box/Margins/VBox/ButtonRow/ConnectBtn
+onready var disconnect_btn = $Row/Box/Margins/VBox/ButtonRow/DisconnectBtn
+var is_open = false setget set_is_open
+func set_is_open(val):
+	if is_open != val:
+		is_open = val
+		handle_label.text = "▶" if is_open else "◀"
+var _slide_tween = null
+
+func _ready():
+	handle.connect("gui_input", self, "_button_input")
+	row.add_constant_override("separation", 0)
+	rect_min_size = Vector2.ZERO
+	_get_ap().connect("connected", self, "_on_ap_connected")
+	_get_ap().connect("disconnected", self, "_on_ap_disconnected")
+	if _get_ap().AP_CONSOLE_CONNECTION_AUTO or _get_ap().AP_CONSOLE_CONNECTION_OPEN:
+		set_is_open(true)
+	call_deferred("_apply_initial_state")
+
+func _apply_initial_state():
+	_recalc_row_size()
+	_set_open_x(0 if is_open else ceil(box.rect_size.x))
+
+func _recalc_row_size():
+	row.rect_min_size.x = handle.rect_size.x + box.rect_size.x
+	row.rect_min_size.y = max(handle.rect_size.y, box.rect_size.y)
+
+func slide_to(open):
 	if open == is_open: return
-	is_open = open
+	set_is_open(open)
 	_slide()
 
-func _set_open_x(x: int) -> void:
-	add_theme_constant_override("margin_left", x)
-	add_theme_constant_override("margin_right", -x)
+func _set_open_x(x):
+	add_constant_override("margin_left", x)
+	add_constant_override("margin_right", -x)
 	queue_sort()
 
 func _slide():
-	var x: int = get_theme_constant("margin_left")
-	var w: int = ceili(box.size.x)
-	var targ_x: int = 0 if is_open else w
-	var dur: float = total_slide_dur * absf(x - targ_x) / w
+	var x = get_constant("margin_left")
+	var w = ceil(box.rect_size.x)
+	var targ_x = 0 if is_open else w
+	var dur = total_slide_dur * abs(x - targ_x) / w
 	if _slide_tween:
-		_slide_tween.kill()
-	_slide_tween = create_tween()
-	_slide_tween.tween_method(_set_open_x, x, targ_x, dur)
+		_slide_tween.stop_all()
+		_slide_tween.queue_free()
+	_slide_tween = Tween.new()
+	add_child(_slide_tween)
+	_slide_tween.interpolate_method(self, "_set_open_x", x, targ_x, dur, Tween.TRANS_LINEAR, Tween.EASE_IN_OUT)
+	_slide_tween.start()
+
 func _button_input(event):
 	if event is InputEventMouseButton:
-		if event.button_index == MOUSE_BUTTON_LEFT and event.is_pressed():
+		if event.button_index == BUTTON_LEFT and event.is_pressed():
 			slide_to(not is_open)
 
-func get_closed_width() -> float:
-	return handle.size.x
+func _on_ap_connected(_conn, _json):
+	connect_btn.disabled = true
+	disconnect_btn.disabled = false
+	if _get_ap().AP_CONSOLE_CONNECTION_AUTO:
+		slide_to(false)
+
+func _on_ap_disconnected():
+	connect_btn.disabled = false
+	disconnect_btn.disabled = true
+	if _get_ap().AP_CONSOLE_CONNECTION_AUTO:
+		slide_to(true)
+
+func get_closed_width():
+	return handle.rect_size.x

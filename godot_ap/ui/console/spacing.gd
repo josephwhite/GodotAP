@@ -1,18 +1,18 @@
 class_name Spacing extends Control
 
-var parent: HFlowContainer
-var hspace: float
+var parent
+var hspace
 
-func _init(_parent: HFlowContainer, _hspace: float):
+func _init(_parent, _hspace):
 	parent = _parent
 	hspace = _hspace
 
 func _ready():
-	get_window().size_changed.connect(_on_window_size_changed)
-	parent.resized.connect(_on_window_size_changed)
+	get_viewport().connect("size_changed", self, "_on_window_size_changed")
+	parent.connect("resized", self, "_on_window_size_changed")
 
-func _on_window_size_changed() -> void:
-	if position.x == 0.0 or position.x + hspace >= get_parent().size.x:
-		custom_minimum_size.x = 0.0
+func _on_window_size_changed():
+	if rect_position.x == 0.0 or rect_position.x + hspace >= get_parent().rect_size.x:
+		rect_min_size.x = 0.0
 	else:
-		custom_minimum_size.x = hspace
+		rect_min_size.x = hspace

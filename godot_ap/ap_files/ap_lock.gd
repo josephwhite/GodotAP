@@ -1,13 +1,13 @@
 class_name APLock extends Node
 ## Data unique to a room connection, locking a save to only connect to the same room.
 
-var valid: bool = false
-var player_id: int = 0
-var team_id: int = 0
-var slot_name: String = ""
-var seed_name: String = ""
+var valid = false
+var player_id = 0
+var team_id = 0
+var slot_name = ""
+var seed_name = ""
 
-func lock(conn: ConnectionInfo) -> Array[String]:
+func lock(conn):
 	if not valid:
 		player_id = conn.player_id
 		team_id = conn.team_id
@@ -15,7 +15,7 @@ func lock(conn: ConnectionInfo) -> Array[String]:
 		seed_name = conn.seed_name
 		valid = true
 		return []
-	var ret: Array[String] = []
+	var ret = []
 	if player_id != conn.player_id:
 		ret.append("Wrong player_id: %d != %d" % [player_id,conn.player_id])
 	if team_id != conn.team_id:
@@ -25,10 +25,10 @@ func lock(conn: ConnectionInfo) -> Array[String]:
 	if seed_name != conn.seed_name:
 		ret.append("Wrong seed_name: %s != %s" % [seed_name,conn.seed_name])
 	return ret
-func unlock() -> void:
+func unlock():
 	valid = false
 
-func read(file: FileAccess) -> bool:
+func read(file):
 	valid = file.get_8()
 	if not valid: return true
 	player_id = file.get_32()
@@ -38,7 +38,7 @@ func read(file: FileAccess) -> bool:
 	if file.get_error():
 		return false
 	return true
-func write(file: FileAccess) -> bool:
+func write(file):
 	file.store_8(1 if valid else 0)
 	if not valid: return true
 	file.store_32(player_id)

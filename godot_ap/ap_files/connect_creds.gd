@@ -1,17 +1,18 @@
 class_name APCredentials extends Node
 
-signal updated(creds: APCredentials)
+signal updated(creds)
 
-var ip: String = "archipelago.gg"
-var port: String = "" :
-	get:
-		if port.is_empty():
-			return "38281"
-		return  port
-var slot: String = ""
-var pwd: String = ""
+var ip = "archipelago.gg"
+var port = "" setget , get_port
 
-func read(file: FileAccess) -> bool:
+func get_port():
+	if port.empty():
+		return "38281"
+	return port
+var slot = ""
+var pwd = ""
+
+func read(file):
 	var new_strs = [file.get_line(),file.get_line(),file.get_line(),file.get_line()]
 	if file.get_error():
 		return false
@@ -19,22 +20,22 @@ func read(file: FileAccess) -> bool:
 	port = new_strs[1]
 	slot = new_strs[2]
 	pwd = new_strs[3]
-	updated.emit(self)
+	emit_signal("updated", self)
 	return true
-func write(file: FileAccess) -> bool:
+
+func write(file):
 	file.store_line(ip)
 	file.store_line(port)
 	file.store_line(slot)
 	file.store_line(pwd)
 	return true
 
-func update(nip: String, nport: String, nslot: String, npwd: String = ""):
+func update(nip, nport, nslot, npwd = ""):
 	ip = nip
 	port = nport
 	slot = nslot
 	pwd = npwd
-	updated.emit(self)
+	emit_signal("updated", self)
 
 func _to_string():
 	return "APCREDS(%s:%s,%s,%s)" % [ip,port,slot,pwd]
-
