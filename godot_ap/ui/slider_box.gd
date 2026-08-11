@@ -1,10 +1,7 @@
 class_name SliderBox extends MarginContainer
 
-const _ap_state = {"ref": null}
 static func _get_ap():
-	if _ap_state.ref == null:
-		_ap_state.ref = Util._get_ap()
-	return _ap_state.ref
+	return Util._get_ap()
 
 export var total_slide_dur = 0.5
 onready var row = $Row

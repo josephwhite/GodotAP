@@ -720,16 +720,14 @@ func set_output_console(val):
 		cmd_manager.console = val
 	output_console = val
 
-## Loads a PackedScene as the active console. This becomes the active scene in the passed SceneTree.
-func load_packed_console_as_scene(tree, console):
+## Loads a PackedScene as the active console, embedded as a child of the AP autoload
+func load_packed_console_as_scene(_tree, console):
 	if output_console: return false
-	if not Util.for_all_nodes(console.instance(), self, "_is_console_container"):
+	var inst = console.instance()
+	if not Util.for_all_nodes(inst, self, "_is_console_container"):
+		inst.free()
 		return false
-	yield(tree, "idle_frame")
-	tree.change_scene_to(console)
-	yield(tree, "node_added")
-	assert(tree.current_scene)
-	load_console(tree.current_scene, false)
+	load_console(inst, true)
 	return true
 ## Loads a Node as the active console. The window this node is in will be considered the console window.
 func load_console(console_scene, as_child = true):

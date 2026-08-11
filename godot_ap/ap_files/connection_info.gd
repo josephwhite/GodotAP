@@ -4,14 +4,11 @@
 ## As each connection is a new object, any connections to signals of this class will automatically be cleaned up upon disconnecting.
 class_name ConnectionInfo
 
-const _AP_state = {"ref": null}
 const _NH_state = {"ref": null}
 const _NI_state = {"ref": null}
 
 static func _get_ap():
-	if _AP_state.ref == null:
-		_AP_state.ref = Util._get_ap()
-	return _AP_state.ref
+	return Util._get_ap()
 static func _get_nh():
 	if _NH_state.ref == null:
 		_NH_state.ref = Util._ap_load("ap_files/network_hint.gd")

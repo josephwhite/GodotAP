@@ -1,10 +1,7 @@
 extends GridContainer
 
-const _ap_state = {"ref": null}
 static func _get_ap():
-	if _ap_state.ref == null:
-		_ap_state.ref = Util._get_ap()
-	return _ap_state.ref
+	return Util._get_ap()
 
 onready var ipbox = $IP_Box
 onready var portbox = $Port_Box

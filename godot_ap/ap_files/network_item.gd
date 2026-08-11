@@ -6,12 +6,9 @@ var src_player_id
 var dest_player_id
 var flags
 
-const _AP_state = {"ref": null}
 const _BC_state = {"ref": null}
 static func _get_ap():
-	if _AP_state.ref == null:
-		_AP_state.ref = Util._get_ap()
-	return _AP_state.ref
+	return Util._get_ap()
 static func _get_bc():
 	if _BC_state.ref == null:
 		_BC_state.ref = Util._ap_load("ui/console/base_console.gd")

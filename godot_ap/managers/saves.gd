@@ -1,10 +1,7 @@
 class_name APSaveManager extends Node
 
-const _ap_state = {"ref": null}
 static func _get_ap():
-	if _ap_state.ref == null:
-		_ap_state.ref = Util._get_ap()
-	return _ap_state.ref
+	return Util._get_ap()
 
 export var SAVE_HEADER = "GodotAP_Save_File"
 var open_save
@@ -50,7 +47,9 @@ func read_save(ind):
 			open_save.clear()
 		file.close()
 	open_save_ind = ind
-	_get_ap().creds = open_save.creds
+	_get_ap().creds.update(
+		open_save.creds.ip, open_save.creds.port,
+		open_save.creds.slot, open_save.creds.pwd)
 	_get_ap().aplock = open_save.aplock
 	return true
 

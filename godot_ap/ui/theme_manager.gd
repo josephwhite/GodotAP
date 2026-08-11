@@ -1,10 +1,7 @@
 class_name ThemeManager extends MarginContainer
 
-const _ap_state = {"ref": null}
 static func _get_ap():
-	if _ap_state.ref == null:
-		_ap_state.ref = Util._get_ap()
-	return _ap_state.ref
+	return Util._get_ap()
 
 signal update_theme(new_theme)
 
@@ -33,10 +30,10 @@ func set_console_theme(path):
 	if path.empty(): return
 	var theme_res = _load_theme(path)
 	if not theme_res is Theme: return
-	for child in get_tree().get_root().get_children():
-		if child is Control:
-			child.theme = theme_res
-			break
+	var target = self
+	while target.get_parent() is Control:
+		target = target.get_parent()
+	target.theme = theme_res
 	_get_ap().config.window_theme_path = path
 	emit_signal("update_theme", theme_res)
 

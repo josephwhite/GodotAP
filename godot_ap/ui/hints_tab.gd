@@ -1,10 +1,7 @@
 class_name HintsTab extends MarginContainer
 
-const _ap_state = {"ref": null}
 static func _get_ap():
-	if _ap_state.ref == null:
-		_ap_state.ref = Util._get_ap()
-	return _ap_state.ref
+	return Util._get_ap()
 
 export(int, 0, 20, 1) var hint_vertical_separation = 15
 onready var hint_console = $Console.console
@@ -332,4 +329,3 @@ func _on_hint_status_clicked(_btn, hint, status_label):
 
 func _on_hint_action_pressed(hint, action_status, _vbox):
 	_get_ap().conn.update_hint(hint.item.loc_id, hint.item.src_player_id, action_status)
-	get_tree().quit()

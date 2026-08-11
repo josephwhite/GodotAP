@@ -2,11 +2,8 @@ class_name GodotAPMain extends ColorRect
 ## Directly opens the CommonClient Console in the current SceneTree
 ## Used for standalone client applications
 
-const _ap_state = {"ref": null}
 static func _get_ap():
-	if _ap_state.ref == null:
-		_ap_state.ref = Util._get_ap()
-	return _ap_state.ref
+	return Util._get_ap()
 
 func _ready():
 	if OS.is_debug_build():
@@ -23,7 +20,8 @@ func _ready():
 		_get_ap().close_console()
 	OS.min_window_size = Vector2(750, 400)
 	OS.set_window_title("AP Text Client")
-	_get_ap().load_packed_console_as_scene(get_tree(), Util._ap_load("ui/common_client.tscn"))
+	if _get_ap().load_packed_console_as_scene(get_tree(), Util._ap_load("ui/common_client.tscn")):
+		hide()
 
 func _on_creds_updated(creds):
 	save_connection(creds)
@@ -31,16 +29,11 @@ func _on_creds_updated(creds):
 static func load_connection():
 	var conn_info_file = Util._file_open("user://ap/connection.dat", File.READ)
 	if not conn_info_file: return
-	var ip = conn_info_file.get_line()
-	var port = conn_info_file.get_line()
-	var slot = conn_info_file.get_line()
-	_get_ap().creds.update(ip, port, slot, "")
+	_get_ap().creds.read(conn_info_file)
 	conn_info_file.close()
 static func save_connection(creds):
 	Util._make_dir_recursive("user://ap/")
 	var conn_info_file = Util._file_open("user://ap/connection.dat", File.WRITE)
 	if not conn_info_file: return
-	conn_info_file.store_line(creds.ip)
-	conn_info_file.store_line(creds.port)
-	conn_info_file.store_line(creds.slot)
+	creds.write(conn_info_file)
 	conn_info_file.close()

@@ -21,24 +21,28 @@ func set_uuid(val):
 static func _randi_range(min_val, max_val):
 	return min_val + randi() % (max_val - min_val + 1)
 
+const _HEX_CHARS = "0123456789abcdef"
+static func _rand_hex():
+	return _HEX_CHARS.substr(_randi_range(0, 15), 1)
+
 static func generate_uuid():
 	var ret = ""
 	for q in 8:
-		ret += "%x" % _randi_range(0, 15)
+		ret += _rand_hex()
 	ret += "-"
 	for q in 4:
-		ret += "%x" % _randi_range(0, 15)
+		ret += _rand_hex()
 	ret += "-"
 	ret += "4"
 	for q in 3:
-		ret += "%x" % _randi_range(0, 15)
+		ret += _rand_hex()
 	ret += "-"
-	ret += "%x" % _randi_range(8, 11)
+	ret += _HEX_CHARS.substr(_randi_range(8, 11), 1)
 	for q in 3:
-		ret += "%x" % _randi_range(0, 15)
+		ret += _rand_hex()
 	ret += "-"
 	for q in 12:
-		ret += "%x" % _randi_range(0, 15)
+		ret += _rand_hex()
 	return ret
 
 func _ready():

@@ -80,4 +80,4 @@ static func _get_tab_idx(my_tabs, control):
 	return -1
 
 func close():
-	get_tree().quit()
+	queue_free()
