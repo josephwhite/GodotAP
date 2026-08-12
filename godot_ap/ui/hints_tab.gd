@@ -256,11 +256,11 @@ func filter_allow(hint):
 	if hint.is_local() and not recv_filters.get(LOCAL_ITEMS, true):
 		return false
 	var flags = hint.item.flags
-	if (flags & _get_ap().ItemClassification.PROG) and not item_filters.get(ITEMS_PROG, true):
+	if Util.has_flag(flags, 0) and not item_filters.get(ITEMS_PROG, true):
 		return false
-	if (flags & _get_ap().ItemClassification.USEFUL) and not item_filters.get(ITEMS_USEFUL, true):
+	if Util.has_flag(flags, 1) and not item_filters.get(ITEMS_USEFUL, true):
 		return false
-	if (flags & _get_ap().ItemClassification.TRAP) and not item_filters.get(ITEMS_TRAP, true):
+	if Util.has_flag(flags, 2) and not item_filters.get(ITEMS_TRAP, true):
 		return false
 	if (not flags) and not item_filters.get(ITEMS_FILLER, true):
 		return false

@@ -40,7 +40,7 @@ static func from_hint(json):
 func is_local():
 	return src_player_id == dest_player_id
 func is_prog():
-	return flags & _get_ap().ItemClassification.PROG
+	return Util.has_flag(flags, 0)
 
 func get_name():
 	return _get_ap().conn.get_gamedata_for_player(dest_player_id).get_item_name(id)

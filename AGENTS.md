@@ -12,7 +12,8 @@
     - If an upstream feature can't be reasonably reimplemented due to Godot 3.6 limitation, drop it.
 
 ## Part 1: Generic Godot 4 → Godot 3.6 Migration Reference
-(Applies to any Godot 4→3.6 project. GodotAP-specific incidents: Part 2.)
+
+This section is for generic downpatch migration from Godot 4.x (4.4 in practice) to Godot 3.6.
 
 ### TabContainer API Differences (3.6)
 - `set_tab_hidden(tab_idx, hidden)` in 3.6 **always advances `current_tab` to the next available tab** (tab_container.cpp:906-923) — even when `hidden=false`. In 4.x unhiding never changes the current tab. Save the previous tab and restore it afterwards.
@@ -600,7 +601,21 @@ Calling `get_viewport().input(ev)` directly from GDScript does **not** reset the
 - `JSON.parse_string(str)` → `parse_json(str)`
 
 #### `parse_json` Returns ONLY Floats
-Godot 3.6's JSON parser produces **`REAL` for every number**, integer literals included (`json.cpp`: `String::to_double()` → `TK_NUMBER` → `REAL`). Godot 3 `Variant::operator==` is **strict-type** (int ≠ float), so a float key **never matches** an int key in a `Dictionary`. Any JSON number fed into an int-keyed (`enum`) lookup or comparison silently misses → default value / wrong branch.
+Godot 3.6's JSON parser produces **`REAL` for every number**, integer literals included (`json.cpp`: `String::to_double()` → `TK_NUMBER` → `REAL`).
+
+Behavior matrix — what actually breaks and what does NOT:
+
+| Operation | Behavior | Verdict |
+|---|---|---|
+| `1 == 1.0` | `True` — `Variant::operator==` numeric-coerces int/float | SAFE |
+| `names[k] == 1.0` (manual `==` scan) | matches int key | SAFE — `_dict_find_key` style works |
+| `dict.get(2.0)` / `dict.has(1.0)` / `dict[3.0]` | `Null`/`False`/miss — **hash-based lookup, NO int/float coercion** | **BROKEN** |
+| `d[2.0] = v` (store float key) | **inserts a SEPARATE float key** alongside int key (dict size grows, `d.size()` dupes) | **BROKEN** |
+| `arr[1.0]` / `arr[1.0] = v` | coerces to int, no error | SAFE |
+| `arr.find(2.0)` / `arr.has(2.0)` | `-1` / `False` — strict | **BROKEN** |
+| `store_32(42.0)` | truncates to 42 — typed-arg coercion | SAFE |
+
+**Real trap:** any JSON float fed into a **Dictionary lookup** (`dict.get`, `dict.has`, `dict[key]`) or **Array membership** (`find`/`has`/`in`) silently misses, and writing `dict[float]` poisons the dict with duplicate float keys. `==`-based paths (`if x == 30`, `arr[float]` index, value scans) are fine.
 
 ```gdscript
 # 4.x (JSON ints can match int enum keys in some engines):
@@ -611,6 +626,8 @@ status_names.get(hint.status, "Unknown")              # MISS -> "Unknown"
 hint.status = int(json.get("status", Status.NOT_FOUND))
 status_names.get(hint.status, "Unknown")              # "Priority"
 ```
+
+**Dict-key hygiene:** once an int-keyed dict receives float keys (e.g. `slot_locations` fed by JSON `checked_locations`), every later `.get(float)` misses AND the float keys leak into `.keys()` and get re-sent to the server as `"123.0"`. Fix at ingestion in `archipelago.gd`: `_remove_loc`/`collect_location`/`server_checked`/`location_exists`/`location_checked`/`on_removed_id` all `int()` their keys, `ReceivedItems` uses `idx = int(json["index"])`.
 
 Grep for JSON-fed enum lookups: check every `dict.get(json[...])` / `status_names` / `_get_status_colors()` call where the value originates from `parse_json`.
 
@@ -823,6 +840,7 @@ Works in 3.6 (since 3.1).
 - `to_upper()` ✓
 - `lstrip()` ✓
 - `substr()` ✓
+- `str[i]` char indexing — **not portable**; some custom engine builds (e.g. Y2ROLL) crash natively on it. Always use safe forms unconditionally (no settings gate): `s[q]` → `match s.substr(q, 1)`, `msg[0]` → `msg.begins_with("/")`.
 - `split()` ✓
 - `count()` ✓
 - `trim_prefix()` / `trim_suffix()` — **not** in 3.6, use `trim_left()` / `trim_right()`
@@ -1031,7 +1049,7 @@ Available in 3.6 ✓
 
 ## Part 2: GodotAP-Specific Fixes & Lessons
 
-Repo-specific application of Part 1 rules. Generic rules live in Part 1.
+This section is repo-specific application/integration notes of Part 1 rules.
 
 ### WebSocket Refactor (`archipelago.gd`)
 
@@ -1062,14 +1080,14 @@ func _process(delta):
 
 **Known expected error noise:** `E 0:00:18.432 _do_handshake: TLS handshake error: -29184` from `modules/mbedtls/stream_peer_mbedtls.cpp:87` during `_process()`. `-29184` = `MBEDTLS_ERR_SSL_INVALID_RECORD` — the target server answered plain HTTP to the initial `wss://` probe. This is the **expected** wss→ws fallback (wss-first is upstream `EmilyV99/GodotAP` behavior; `archipelago.gd` toggles `_wss` in `_on_ws_error` and retries over `ws://`). Connection succeeds on the fallback. **Not a bug, not a 3.6 regression** — 4.x suppresses this print, 3.6 hard-`ERR_PRINT`s it (stream_peer_mbedtls.cpp:87-88). Cannot be silenced from GDScript; a C++ `ERR_PRINT`. Verified safe: failed handshake path (wsl_client.cpp:304-307) calls `disconnect_from_host()` (nulls `_connection`, so retry won't hit `ERR_ALREADY_IN_USE` at wsl_client.cpp:160) then `_on_error()` → only `connection_error` fires, no `connection_closed` conflict with `ap_reconnect()`.
 
-### Theme Incidents
+### Theme Fixes
 
 #### Ghost Overlay: `Console_Bar_Back`/`_Front` + `show_behind_parent`
-- A variation type (`Console_Bar_Back`/`Console_Bar_Front`) overrides only some items and inherits the rest (stylebox, font_color) from its `base_type` in the **same** theme — basis of the ghost-overlay design behind `show_behind_parent`.
-- Downport error: stripping `show_behind_parent = true` from `typing_bar.tscn:20` AutofillText made the full-rect ghost `LineEdit` draw ON TOP of the parent typing bar; its inherited opaque light-theme `Console_Bar` stylebox then covered the typed text (invisible in Light Mode).
+- `Console_Bar_Back`/`Console_Bar_Front` are variation types: they override some items and inherit the rest (stylebox, font_color) from their `base_type` in the **same** theme — basis of the ghost-overlay design behind `show_behind_parent`.
+- `typing_bar.tscn:20` AutofillText must keep `show_behind_parent = true`. Without it, the full-rect ghost `LineEdit` draws ON TOP of the parent typing bar, and its inherited opaque light-theme `Console_Bar` stylebox covers the typed text (invisible in Light Mode).
 
 #### `dark_theme.tres` Stylebox Collapse (connect box transparency)
-Early downport collapsed ALL dark-theme styleboxes to one 30%-alpha `StyleBoxFlat` (upstream has ~15 distinct). Symptom: connect box rendered transparent/ghosted in dark theme. Restored sub-resources:
+Do not collapse all dark-theme styleboxes into one 30%-alpha `StyleBoxFlat` (upstream has ~15 distinct) — the connect box renders transparent/ghosted. Restore sub-resources:
 - id=2 `Console_BG` opaque `Color(0,0,0,1)`
 - id=3 `StyleBoxEmpty` for `Console_Bar` focus + `Console_Bar_Front`
 - id=4 `Console_Bar` normal `Color(0.145098,0.145098,0.145098,1)`
@@ -1081,47 +1099,55 @@ Early downport collapsed ALL dark-theme styleboxes to one 30%-alpha `StyleBoxFla
 Button/CheckBox/OptionButton/MenuButton intentionally left at collapsed state (not user-visible yet).
 
 #### `light_theme.tres` `type="Texture2D"` Stragglers
-Dark theme converted correctly; light theme had 14 remaining `type="Texture2D"` refs in ext_resources → all `type="Texture"`.
-
-### Console UI
-
-#### `gui_input` MOUSE_FILTER_STOP (`console_tab.tscn`)
-`ConnectBox/Row/Handle/Margin` + `.../CustomLabel` decorative children needed `mouse_filter = 2` so the handle's own `gui_input` fires (generic fix in Part 1).
+Light theme had 14 `type="Texture2D"` refs in ext_resources → all converted to `type="Texture"`.
 
 ### Setget Setters
 - `godot_ap/ui/slider_box.gd` (`is_open`) — call `set_is_open()` explicitly on internal writes, incl. `_ready()`-time init.
 - `godot_ap/autoloads/archipelago.gd` (`output_console`) — setter also must sync the member var itself, since ~25 internal reads bypass the getter; internal writes in `_init_console()`/`close_console()` must call `set_output_console()` explicitly.
+- **`godot_ap/autoloads/archipelago.gd` (`status`)** — all internal writes must call `_set_status(APStatus.X)` so `status_updated` fires (and `conn` is nulled + reconnect queue handled on DISCONNECTED). Grep: `rg 'status\s*=\s*APStatus'`.
 
 ### Signals & SceneTree
 - `child_entered_tree` → `NOTIFICATION_CHILD_ENTERED_TREE`: `base_console.gd:153`.
 - SceneTree API sites: `util.gd:10`, `archipelago.gd:833`, `util.gd:94`.
 
 ### JSON Float-Key Hits
-`parse_json` float trap (Part 1) applied at: `network_hint.gd:48` (hint status → "unknown"), `base_console.gd:335` (console status), `network_item.gd:30,40` (`flags` bitfield float `&` crash). Grep for JSON-fed enum lookups: check every `dict.get(json[...])` / `status_names` / `_get_status_colors()` call where the value originates from `parse_json`.
+`parse_json` float trap (Part 1) applied at: `network_hint.gd:48` (hint status → "unknown"), `base_console.gd:335` (console status), `network_item.gd:30,40` (`flags` bitfield float `&` crash), `archipelago.gd` (slot_locations keys + `ReceivedItems` index — see Part 1 "Dict-key hygiene").
 
 ### Containers
-`Spacing` class (`godot_ap/ui/console/spacing.gd`) references `HFlowContainer` as parent type — change to `Container` or fold spacing logic into the flow container's sort callback.
+`Spacing` class (`godot_ap/ui/console/spacing.gd`) references `HFlowContainer` as parent type.
+ Change to `Container` or fold spacing logic into the flow container's sort callback.
 
 ### Fonts
 - `godot_ap/util/font_storage.gd`, `godot_ap/util/util.gd` (`font_mod()`, `_get_supported_opentype_variants()`) — FontVariation features dropped.
 - DynamicFont fallbacks in `.tres`: `godot_ap/ui/themes/symbols_font.tres`, `themes/basic_font.tres`, `ui/console_font.tres` — `fallback/N`, not `fallbacks = [...]`.
 
+### Engine-Compat Settings (`casus` dict)
+Custom engine builds (e.g. Y2ROLL, a 3.6 fork) can crash natively (0xc0000005) on constructs stock Godot handles fine.
+- **bitwise ops** (`&`, `<<`, `>>`)
+
+Gating strategy, per user design:
+- **Settings live in a `casus` Dictionary export on the `Archipelago` autoload** (not flat exports, not `AP_` prefix). All keys default `false` = stock behavior. Read via `Util._casus(key)` at call time so mods can set them before connecting.
+- Only one key: `DISABLE_BITWISE_OPERATIONS`.
+- Bit tests route through a shared `Util.has_flag(flags, bit)`: gated → `int(flags / pow(2, bit)) % 2 == 1`, else `flags & (1 << bit) != 0`.
+- `Util.unsigned_to_signed` gated branch: `int((unsigned + half) % max_val) - half` with `max_val = int(pow(2, bits))`.
+- `Util.bit_count` gated branch: hoisted `int(val / pow(2, v)) % 2 == 1` per bit.
+- The gated `&`/`<<`/`>>` at `util.gd:153/160/175` are the **stock** fallback paths — correct, keep them.
+
 ### Misc
 - `horizontal_alignment` → `align` grep found in `godot_ap/managers/gui.gd:13`, only hit in repo.
-- Theme System Mechanics (Part 1) verified during the light-mode text-invisibility investigation.
 
 ### Affected-Files Index
 | File | Part 1 rules applied |
 |---|---|
-| `godot_ap/autoloads/archipelago.gd` | WebSocket refactor; `setget` `output_console`; SceneTree (833) |
+| `godot_ap/autoloads/archipelago.gd` | WebSocket refactor; `setget` `output_console` + `status` (internal writes → `_set_status()`); JSON float keys (`_remove_loc`/`collect_location`/`server_checked`/`ReceivedItems` `int()`); `get_datacache` null guard; SceneTree (833); `casus` export; bit ops → `Util.has_flag`/`int(pow(2,q))` |
 | `godot_ap/ui/slider_box.gd` | `setget` `is_open` |
 | `godot_ap/ui/console/base_console.gd` | `child_entered_tree` → notification (153); JSON float (335) |
 | `godot_ap/ui/console_tab.tscn` | gui_input MOUSE_FILTER_STOP handle |
 | `godot_ap/ui/typing_bar.tscn` | `show_behind_parent` (20) |
 | `godot_ap/managers/gui.gd` | `horizontal_alignment` → `align` (13) |
 | `godot_ap/ap_files/network_hint.gd` | JSON float → `int()` (48) |
-| `godot_ap/ap_files/network_item.gd` | JSON float flags → `int()` (30,40) |
-| `godot_ap/util/util.gd` | SceneTree (10,94); Font System (`font_mod`, `_get_supported_opentype_variants`) |
+| `godot_ap/ap_files/network_item.gd` | JSON float flags → `int()` (30,40); `is_prog()` → `Util.has_flag(flags, 0)` |
+| `godot_ap/util/util.gd` | SceneTree (10,94); Font System (`font_mod`, `_get_supported_opentype_variants`); `_casus`/`has_flag`; gated `unsigned_to_signed`/`bit_count` |
 | `godot_ap/util/font_storage.gd` | Font System (FontVariation dropped) |
 | `godot_ap/ui/themes/dark_theme.tres` | stylebox collapse → restored opaque panels |
 | `godot_ap/ui/themes/light_theme.tres` | `Texture2D` → `Texture` (14 refs) |
@@ -1129,6 +1155,7 @@ Dark theme converted correctly; light theme had 14 remaining `type="Texture2D"` 
 | `godot_ap/ui/console/spacing.gd` | HFlowContainer parent type |
 
 ## References
+
 ### GodotAP
 - [GodotAP Upstream (Godot 4)](https://github.com/EmilyV99/GodotAP)
 ### Godot

@@ -138,8 +138,26 @@ static func load_scene(tree, scene):
 static func is_zero_vec(vec):
 	return abs(vec.x) < GAMMA and abs(vec.y) < GAMMA
 
+## Get engine build quirk.
+static func _casus(key):
+	var ap = _get_ap()
+	if ap:
+		return ap.casus.get(key, false)
+	return false
+
+## Tests whether a flag bit is set.
+static func has_flag(flags, bit):
+	# Pow()-based math when the engine build crashes on bitwise operators.
+	if _casus("DISABLE_BITWISE_OPERATIONS"):
+		return int(flags / pow(2, bit)) % 2 == 1
+	# Uses bitwise ops on stock engines.
+	return (flags & (1 << bit)) != 0
 
 static func unsigned_to_signed(unsigned, bits):
+	if _casus("DISABLE_BITWISE_OPERATIONS"):
+		var max_val = int(pow(2, bits))
+		var half = int(pow(2, bits - 1))
+		return int((unsigned + half) % max_val) - half
 	return (unsigned + (1 << (bits-1))) % (1 << bits) - (1 << (bits-1))
 static func unsigned_to_signed_8(unsigned):
 	return unsigned_to_signed(unsigned, 8)
@@ -150,8 +168,12 @@ static func unsigned_to_signed_32(unsigned):
 
 static func bit_count(val):
 	var ret = 0
-	for v in 64:
-		if val & (1<<v): ret += 1
+	if _casus("DISABLE_BITWISE_OPERATIONS"):
+		for v in 64:
+			if int(val / pow(2, v)) % 2 == 1: ret += 1
+	else:
+		for v in 64:
+			if val & (1<<v): ret += 1
 	return ret
 
 static func approx_eq(v1, v2):
@@ -192,7 +214,7 @@ static func find_break_paren(s):
 	var bracket = 0
 	var brace = 0
 	for q in s.length():
-		match s[q]:
+		match s.substr(q, 1):
 			"(": paren += 1
 			"[": bracket += 1
 			"{": brace += 1

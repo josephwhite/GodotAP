@@ -40,6 +40,13 @@ export var READABLE_DATAPACK_FILES = true
 export var datapack_cached_fields = ["item_name_to_id","location_name_to_id","checksum"]
 ## Size, in MB, of the websocket inbound buffer. Raising may help if large datapackages are causing disconnections.
 export(int, 5, 500, 1) var websocket_inbuffer_mb = 50
+## Game/engine compatibility toggles.
+## All default to `false`, meaning stock Godot 3.6 behavior.
+## Each key makes the library defer to a non-native-crash implementation of a construct a custom engine build cannot execute (e.g. Y2ROLL).
+## Keys are read via `Util._casus()` at call time, so set them before connecting.
+export var casus = {
+	"DISABLE_BITWISE_OPERATIONS": false,
+}
 
 onready var hang_clock = $HangTimer
 
@@ -170,7 +177,7 @@ func ap_reconnect():
 		_queue_reconnect = true
 		return
 	emit_signal("connect_step", "Connecting...")
-	status = APStatus.SOCKET_CONNECTING
+	_set_status(APStatus.SOCKET_CONNECTING)
 	_connect_attempts = 1
 	_wss = true
 	emit_signal("preconnect")
@@ -194,7 +201,7 @@ func ap_disconnect():
 		_connecting_part = null
 	if status == APStatus.DISCONNECTED or status == APStatus.DISCONNECTING:
 		return
-	status = APStatus.DISCONNECTING
+	_set_status(APStatus.DISCONNECTING)
 	emit_signal("connect_step", "Disconnecting...")
 	_socket.disconnect_from_host()
 	if hang_clock and hang_clock.is_inside_tree():
@@ -212,7 +219,7 @@ func force_disconnect():
 	if status == APStatus.DISCONNECTED: return
 	_socket.disconnect_from_host()
 	_create_socket()
-	status = APStatus.DISCONNECTED
+	_set_status(APStatus.DISCONNECTED)
 	emit_signal("disconnected")
 
 func _create_socket():
@@ -281,7 +288,12 @@ static func dberror(s):
 	error(s)
 #endregion
 
-enum WebSocketState { STATE_CLOSED, STATE_CONNECTING, STATE_OPEN, STATE_CLOSING }
+enum WebSocketState {
+	STATE_CLOSED,
+	STATE_CONNECTING,
+	STATE_OPEN,
+	STATE_CLOSING
+}
 
 var _socket_state = WebSocketState.STATE_CLOSED
 
@@ -296,14 +308,14 @@ func _on_ws_connected(_protocol=""):
 		_peer.set_write_mode(0)
 	if status == APStatus.SOCKET_CONNECTING:
 		_log("Connected to '%s'!" % get_url())
-		status = APStatus.CONNECTING
+		_set_status(APStatus.CONNECTING)
 
 func _on_ws_closed():
 	_socket_state = WebSocketState.STATE_CLOSED
 	if hang_clock:
 		hang_clock.stop()
 	if status == APStatus.DISCONNECTING:
-		status = APStatus.DISCONNECTED
+		_set_status(APStatus.DISCONNECTED)
 		emit_signal("disconnected")
 	else:
 		_log("Accidental disconnection; reconnecting!")
@@ -314,7 +326,7 @@ func _on_ws_error():
 	if status == APStatus.SOCKET_CONNECTING:
 		if _connect_attempts >= 50:
 			_socket.disconnect_from_host()
-			status = APStatus.DISCONNECTING
+			_set_status(APStatus.DISCONNECTING)
 			_log("Connection to '%s' failed too much! Giving up!" % get_url())
 			if output_console and _connecting_part:
 				_connecting_part.text = "Connection Failed!"
@@ -353,7 +365,7 @@ func _handle_command(json): # Handle an incoming packet from the server
 	comm_log("RECV", str(json))
 	match command:
 		"RoomInfo":
-			status = APStatus.CONNECTED
+			_set_status(APStatus.CONNECTED)
 			emit_signal("connect_step", "Parsing RoomInfo...")
 			if output_console and _connecting_part:
 				_connecting_part.text = "Authenticating..."
@@ -410,7 +422,7 @@ func _handle_command(json): # Handle an incoming packet from the server
 			var server_checked = {}
 			for loc in json["checked_locations"]:
 				_remove_loc(loc)
-				server_checked[loc] = true
+				server_checked[int(loc)] = true
 
 			var to_collect = []
 			for loc in conn.slot_locations.keys():
@@ -421,7 +433,7 @@ func _handle_command(json): # Handle an incoming packet from the server
 			# Deathlink stuff?
 			# If deathlink stuff, possibly ConnectUpdate to add DeathLink tag?
 
-			status = APStatus.PLAYING
+			_set_status(APStatus.PLAYING)
 			if output_console and _connecting_part:
 				_connecting_part.text = "Connected Successfully!"
 				_connecting_part = null
@@ -449,7 +461,7 @@ func _handle_command(json): # Handle an incoming packet from the server
 				if status == APStatus.CONNECTED:
 					yield(self, "status_updated")
 				else: return
-			var idx = json["index"]
+			var idx = int(json["index"])
 			var items = []
 			for obj in json["items"]:
 				items.append(NetworkItem.from(obj, true))
@@ -576,6 +588,8 @@ static func get_datacache(game):
 		return DataCache.new()
 	ret = DataCache.from_file(data_file)
 	data_file.close()
+	if not ret:
+		return DataCache.new()
 	_data_caches[game] = ret
 	return ret
 #endregion DATAPACKS
@@ -643,16 +657,18 @@ func _receive_item(index, item):
 
 #region LOCATIONS
 func _remove_loc(loc_id):
-	if conn and not conn.slot_locations.get(loc_id, false):
-		conn.slot_locations[loc_id] = true
-		emit_signal("remove_location", loc_id)
+	var lid = int(loc_id)
+	if conn and not conn.slot_locations.get(lid, false):
+		conn.slot_locations[lid] = true
+		emit_signal("remove_location", lid)
 ## Will call `proc` when the specified location id is "removed" (i.e. collected, either by the player or the server)
 ## If the location is already removed when you call this, `proc` will be called immediately.
 func on_removed_id(loc_id, proc):
-	if conn.slot_locations.get(loc_id, false):
+	var lid = int(loc_id)
+	if conn.slot_locations.get(lid, false):
 		proc.call_func()
 	else:
-		connect("remove_location", self, "_on_location_removed", [loc_id, proc])
+		connect("remove_location", self, "_on_location_removed", [lid, proc])
 ## Will call `proc` when the specified location name is "removed" (i.e. collected, either by the player or the server)
 ## If the location is already removed when you call this, `proc` will be called immediately.
 func on_removed(loc_name, proc):
@@ -662,8 +678,9 @@ func on_removed(loc_name, proc):
 func collect_location(loc_id):
 	if _is_nongame_client: return
 	_printout_recieved_items = false
-	send_command("LocationChecks", {"locations":[loc_id]})
-	_remove_loc(loc_id)
+	var lid = int(loc_id)
+	send_command("LocationChecks", {"locations":[lid]})
+	_remove_loc(lid)
 ## Call when multiple locations are collected and need to be sent to the server at once.
 func collect_locations(locs):
 	if _is_nongame_client: return
@@ -675,10 +692,12 @@ func collect_locations(locs):
 
 ## Returns if the location exists in the slot or not.
 func location_exists(loc_id):
-	return conn.slot_locations.has(loc_id)
+	var lid = int(loc_id)
+	return conn.slot_locations.has(lid)
 ## Returns if the location was checked or not. `def` is returned if the location does not exist in the slot.
 func location_checked(loc_id, def = false):
-	return conn.slot_locations.get(loc_id, def)
+	var lid = int(loc_id)
+	return conn.slot_locations.get(lid, def)
 ## Returns a list of all location ids
 func location_list():
 	var arr = []
@@ -917,15 +936,15 @@ enum ItemClassification {
 
 ## Converts a set of ItemClassification flags to a 'SpecialColor'
 static func get_item_class_color(flags):
-	if flags & ItemClassification.PROG:
+	if Util.has_flag(flags, 0):
 		var _ap = _get_ap()
-		if _ap and _ap.AP_ENABLE_PROGUSEFUL and (flags & ItemClassification.USEFUL):
+		if _ap and _ap.AP_ENABLE_PROGUSEFUL and Util.has_flag(flags, 1):
 			return APColors.SpecialColor.ITEM_PROGUSEFUL
 		else:
 			return APColors.SpecialColor.ITEM_PROG
-	elif flags & ItemClassification.TRAP:
+	elif Util.has_flag(flags, 2):
 		return APColors.SpecialColor.ITEM_TRAP
-	elif flags & ItemClassification.USEFUL:
+	elif Util.has_flag(flags, 1):
 		return APColors.SpecialColor.ITEM_USEFUL
 	return APColors.SpecialColor.ITEM
 ## Returns the string name representing the combined item classifications flags
@@ -942,14 +961,14 @@ static func get_item_classification(flags):
 		_: # If multiple bits are combined, make a comma-delimited list.
 			var s = ""
 			for q in 3:
-				if flags & (1<<q):
+				if Util.has_flag(flags, q):
 					if s:
 						s += ","
-					s += get_item_classification(1<<q)
+					s += get_item_classification(int(pow(2, q)))
 			return s
 
 func _default_cmd(mgr, msg):
-	if msg[0] == "/":
+	if msg.begins_with("/"):
 		mgr.console.add(BaseConsole.make_text("Unknown command '%s' - use '/help' to see commands" % msg.split(" ", true, 1)[0], "", APColors.ComplexColor.as_special(APColors.SpecialColor.UI_MESSAGE)))
 	else:
 		if _ensure_connected(mgr.console):
