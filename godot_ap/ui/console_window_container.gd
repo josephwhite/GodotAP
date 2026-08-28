@@ -19,7 +19,7 @@ func set_hide_hints_tab(val):
 
 func recount(): ## Returns the number of visible tabs, and sets the tabbar's visibility.
 	var count = 0
-	for q in tabs.get_tab_count():
+	for q in range(tabs.get_tab_count()):
 		if not tabs.get_tab_hidden(q):
 			count += 1
 	tabs.tabs_visible = count > 1
@@ -74,7 +74,7 @@ func _compute_bar_width(n, right_bar_ws):
 		right_bar_ws.push_back(n.get_closed_width())
 
 static func _get_tab_idx(my_tabs, control):
-	for i in my_tabs.get_tab_count():
+	for i in range(my_tabs.get_tab_count()):
 		if my_tabs.get_tab_control(i) == control:
 			return i
 	return -1

@@ -169,11 +169,57 @@ static func unsigned_to_signed_32(unsigned):
 static func bit_count(val):
 	var ret = 0
 	if _casus("DISABLE_BITWISE_OPERATIONS"):
-		for v in 64:
+		for v in range(64):
 			if int(val / pow(2, v)) % 2 == 1: ret += 1
 	else:
-		for v in 64:
+		for v in range(64):
 			if val & (1<<v): ret += 1
+	return ret
+
+## Probes raw TCP reachability of host:port without involving WebSocketClient.
+## Can use before connecting since a refused/unreachable server is reported
+## gracefully instead of routing through the engine's socket error path.
+## Note: Godot 3's StreamPeerTCP accepts only a pre-resolved IP_Address (funny DNS lookup),
+## so hostnames go through the IP resolver queue first.
+## The async connect handshake is driven by re-invoking
+## put_data(), which runs the internal connection poll.
+static func _tcp_probe(host, port, timeout_ms = 2500):
+	var deadline = OS.get_ticks_msec() + timeout_ms
+	var addr_str = host
+	if not host.is_valid_ip_address():
+		var qid = IP.resolve_hostname_queue_item(host, IP.TYPE_ANY)
+		var done = false
+		while OS.get_ticks_msec() < deadline:
+			match IP.get_resolve_item_status(qid):
+				IP.RESOLVER_STATUS_DONE:
+					addr_str = IP.get_resolve_item_address(qid)
+					done = true
+					break
+				IP.RESOLVER_STATUS_ERROR:
+					done = false
+					break
+			OS.delay_msec(10)
+		IP.erase_resolve_item(qid)
+		if not done or not addr_str:
+			return false
+		deadline = OS.get_ticks_msec() + timeout_ms
+	var tcp = StreamPeerTCP.new()
+	tcp.connect_to_host(addr_str, port)
+	var st = tcp.get_status()
+	if st != StreamPeerTCP.STATUS_CONNECTING and st != StreamPeerTCP.STATUS_CONNECTED:
+		tcp.disconnect_from_host()
+		return false
+	var ret = false
+	while OS.get_ticks_msec() < deadline:
+		tcp.put_data(PoolByteArray())
+		st = tcp.get_status()
+		if st == StreamPeerTCP.STATUS_CONNECTED:
+			ret = true
+			break
+		if st == StreamPeerTCP.STATUS_ERROR:
+			break
+		OS.delay_msec(10)
+	tcp.disconnect_from_host()
 	return ret
 
 static func approx_eq(v1, v2):
@@ -213,7 +259,7 @@ static func find_break_paren(s):
 	var paren = 0
 	var bracket = 0
 	var brace = 0
-	for q in s.length():
+	for q in range(s.length()):
 		match s.substr(q, 1):
 			"(": paren += 1
 			"[": bracket += 1
@@ -239,8 +285,8 @@ static func poll_timer(timer, dur):
 static func modulate(img, col):
 	var ret = Image.new()
 	ret.copy_from(img)
-	for x in ret.get_width():
-		for y in ret.get_height():
+	for x in range(ret.get_width()):
+		for y in range(ret.get_height()):
 			var px = ret.get_pixel(x, y)
 			if int(px.a * 255) == 255:
 				ret.set_pixel(x, y, px * col)
@@ -249,8 +295,8 @@ static func modulate(img, col):
 static func grayscale(img):
 	var ret = Image.new()
 	ret.copy_from(img)
-	for x in ret.get_width():
-		for y in ret.get_height():
+	for x in range(ret.get_width()):
+		for y in range(ret.get_height()):
 			var px = ret.get_pixel(x, y)
 			if int(px.a * 255) == 255:
 				ret.set_pixel(x, y, gray(px))

@@ -41,9 +41,10 @@ export var datapack_cached_fields = ["item_name_to_id","location_name_to_id","ch
 ## Size, in MB, of the websocket inbound buffer. Raising may help if large datapackages are causing disconnections.
 export(int, 5, 500, 1) var websocket_inbuffer_mb = 50
 ## Game/engine compatibility toggles.
-## All default to `false`, meaning stock Godot 3.6 behavior.
-## Each key makes the library defer to a non-native-crash implementation of a construct a custom engine build cannot execute (e.g. Y2ROLL).
-## Keys are read via `Util._casus()` at call time, so set them before connecting.
+## All default to `false` (stock Godot 3.6 behavior).
+## Each key makes the library defer to a non-native-crash implementation of a construct a custom engine build cannot execute (see docs/ENGINE_ODDITIES.md).
+## `DISABLE_BITWISE_OPERATIONS` routes all bit-flag math through `Util.has_flag()`/pow()-based helpers.
+## Keys are read via `Util._casus()`, set them before connecting.
 export var casus = {
 	"DISABLE_BITWISE_OPERATIONS": false,
 }
@@ -165,10 +166,25 @@ var _connecting_part # Label in the 'output_console' displaying the messages fro
 
 var _connect_attempts = 1 # Connection attempt counter
 var _wss = true # If current connection attempt is using secure sockets. Alternates each attempt.
+const MAX_CONNECT_CYCLES = 5 # Full wss/ws cycles before giving up
+
+var _probe_ok = null # Cached raw-TCP reachability verdict for the current target ('null' while unprobed)
+var _probe_time = 0
 
 ## Returns the URL currently being targetted for connection
 func get_url():
 	return "%s://%s:%s" % ["wss" if _wss else "ws",creds.ip,creds.port]
+
+## Raw-TCP server reach test. Avoids WebSocketClient error.
+## Verdict cached briefly so connection retries don't probe on every attempt.
+func _server_reachable():
+	var now = OS.get_ticks_msec()
+	if _probe_ok == null or now - _probe_time >= 10000:
+		_probe_ok = Util._tcp_probe(creds.ip, int(creds.get_port()))
+		_probe_time = now
+		if not _probe_ok:
+			error("Server '%s:%s' unreachable! Not attempting a WebSocket connection." % [creds.ip, creds.get_port()])
+	return _probe_ok
 
 ## Reconnect to Archipelago with the same information as before
 func ap_reconnect():
@@ -177,6 +193,11 @@ func ap_reconnect():
 		_queue_reconnect = true
 		return
 	emit_signal("connect_step", "Connecting...")
+	if not _server_reachable():
+		_set_status(APStatus.DISCONNECTED)
+		emit_signal("disconnected")
+		emit_signal("connect_step", "Server unreachable!")
+		return
 	_set_status(APStatus.SOCKET_CONNECTING)
 	_connect_attempts = 1
 	_wss = true
@@ -193,6 +214,7 @@ func ap_connect(room_ip, room_port, slot_name, room_pwd = ""):
 		ap_disconnect() # Do it here so the ip/port/slot are correct in the disconnect message
 	open_logger()
 	creds.update(room_ip, room_port, slot_name, room_pwd)
+	_probe_ok = null
 	ap_reconnect()
 
 ## Disconnect from Archipelago
@@ -310,37 +332,62 @@ func _on_ws_connected(_protocol=""):
 		_log("Connected to '%s'!" % get_url())
 		_set_status(APStatus.CONNECTING)
 
-func _on_ws_closed():
+func _on_ws_closed(_was_clean = false):
 	_socket_state = WebSocketState.STATE_CLOSED
 	if hang_clock:
 		hang_clock.stop()
 	if status == APStatus.DISCONNECTING:
 		_set_status(APStatus.DISCONNECTED)
 		emit_signal("disconnected")
+	elif status == APStatus.DISCONNECTED:
+		pass # Give-up path already reported teardown; ignore the late close event.
 	else:
 		_log("Accidental disconnection; reconnecting!")
 		ap_reconnect()
 
+## Abandon a connection attempt: tear down the socket, reset to idle, and
+## inform both hosts (signals) and console users.
+func _give_up_connecting(msg, tip):
+	_socket.disconnect_from_host()
+	_set_status(APStatus.DISCONNECTED)
+	_log("Connection to '%s' failed! Giving up: %s" % [get_url(), msg])
+	if output_console and _connecting_part:
+		_connecting_part.text = "Connection Failed!"
+		_connecting_part.hint_tooltip += "\n" + tip
+		_connecting_part = null
+	emit_signal("connect_step", msg)
+	emit_signal("disconnected")
+
+## Flip the scheme for the next ws connection attempt.
+## Either schedule it (with backoff) or give up.
+func _advance_retry():
+	_wss = not _wss
+	if _wss: _connect_attempts += 1
+	if _connect_attempts > MAX_CONNECT_CYCLES:
+		_give_up_connecting("Connection failed!", "Failed connecting too many times. Check your connection details, or '/reconnect' to try again.")
+		return
+	if not _server_reachable():
+		_give_up_connecting("Server unreachable!", "Server unreachable. Check your connection details, or '/reconnect' to try again.")
+		return
+	get_tree().create_timer(0.25 * _connect_attempts).connect("timeout", self, "_retry_dial")
+
+## Redial after the backoff delay; a no-op if the user disconnected meanwhile.
+func _retry_dial():
+	if status != APStatus.SOCKET_CONNECTING: return
+	var err = _socket.connect_to_url(get_url())
+	if err:
+		_log("Connection to '%s' failed immediately! Retrying (%d)" % [get_url(), _connect_attempts])
+		_advance_retry()
+
+## ws-error event path
 func _on_ws_error():
 	_socket_state = WebSocketState.STATE_CLOSED
 	if status == APStatus.SOCKET_CONNECTING:
-		if _connect_attempts >= 50:
-			_socket.disconnect_from_host()
-			_set_status(APStatus.DISCONNECTING)
-			_log("Connection to '%s' failed too much! Giving up!" % get_url())
-			if output_console and _connecting_part:
-				_connecting_part.text = "Connection Failed!"
-				_connecting_part.hint_tooltip += "\nFailed connecting too many times. Check your connection details, or '/reconnect' to try again."
-				_connecting_part = null
+		if _connect_attempts >= MAX_CONNECT_CYCLES:
+			_give_up_connecting("Connection failed!", "Failed connecting too many times. Check your connection details, or '/reconnect' to try again.")
 		else:
 			_log("Connection to '%s' failed! Retrying (%d)" % [get_url(), _connect_attempts])
-			_wss = not _wss
-			if _wss: _connect_attempts += 1
-			var err = _socket.connect_to_url(get_url())
-			if err:
-				_log("Connection to '%s' failed immediately! Retrying (%d)" % [get_url(), _connect_attempts])
-				_wss = not _wss
-				if _wss: _connect_attempts += 1
+			_advance_retry()
 
 func _on_ws_data():
 	var packet = _socket.get_peer(1).get_packet()
@@ -960,7 +1007,7 @@ static func get_item_classification(flags):
 			return "Filler"
 		_: # If multiple bits are combined, make a comma-delimited list.
 			var s = ""
-			for q in 3:
+			for q in range(3):
 				if Util.has_flag(flags, q):
 					if s:
 						s += ","
@@ -1015,7 +1062,7 @@ func _cmd_locations(mgr, _cmd, msg):
 	grid.add_child(BaseConsole.make_text("Status:"))
 	var ids = data.location_name_to_id.values()
 	_sort_temp_index_dict.clear()
-	for q in ids.size():
+	for q in range(ids.size()):
 		_sort_temp_index_dict[ids[q]] = q
 	ids.sort_custom(self, "_sort_by_index")
 	for lid in ids:
@@ -1052,7 +1099,8 @@ func _cmd_items(mgr, _cmd, msg):
 	var ids = data.item_name_to_id.values()
 	_sort_temp_index_dict.clear()
 	_sort_temp_item_dict = item_dict.duplicate()
-	for q in ids.size(): _sort_temp_index_dict[ids[q]] = q
+	for q in range(ids.size()): 
+		_sort_temp_index_dict[ids[q]] = q
 	ids.sort_custom(self, "_sort_items_by_flag")
 	var found_second_column = false
 	var found_any = false
@@ -1192,7 +1240,7 @@ func _autofill_locs(msg):
 				locs.remove(q)
 			else:
 				q += 1
-	for q in locs.size():
+	for q in range(locs.size()):
 		locs[q] = "%s %s" % [args[0],locs[q]]
 	return locs
 func _autofill_items(msg):
@@ -1213,7 +1261,7 @@ func _autofill_items(msg):
 				itms.remove(q)
 			else:
 				q += 1
-	for q in itms.size():
+	for q in range(itms.size()):
 		itms[q] = "%s %s" % [args[0],itms[q]]
 	return itms
 
@@ -1233,7 +1281,7 @@ func _update_tags():
 ## Sets a given Archipelago tag (on or off)
 func set_tag(tag, state = true):
 	if tag.empty(): return
-	for q in AP_GAME_TAGS.size():
+	for q in range(AP_GAME_TAGS.size()):
 		var t = AP_GAME_TAGS[q]
 		if t == tag:
 			if not state:

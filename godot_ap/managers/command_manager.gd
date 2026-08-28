@@ -63,7 +63,7 @@ func call_cmd(msg):
 		else:
 			cmd.call_target.call(cmd.call_method, self, cmd, msg)
 	else:
-		for i in default_targets.size():
+		for i in range(default_targets.size()):
 			default_targets[i].call(default_methods[i], self, msg)
 
 
@@ -88,8 +88,9 @@ func _cmd_help(mgr, _cmd, _msg):
 		" connected to an Archipelago server or not.", APColors.ComplexColor.as_special(APColors.SpecialColor.UI_MESSAGE))
 	mgr.console.add(folder)
 	folder.add(mgr.console.make_header_spacing())
-	for cmd in mgr.get_commands().filter(self, "_is_help_visible"):
-		cmd.output_helptext(mgr.console, folder)
+	for cmd in mgr.get_commands():
+		if _is_help_visible(cmd):
+			cmd.output_helptext(mgr.console, folder)
 	mgr.console.add_header_spacing()
 	folder.fold(false)
 func _cmd_cls(mgr, _cmd, _msg):
@@ -99,8 +100,9 @@ func _cmd_clr_hist(mgr, _cmd, _msg):
 func _cmd_db_help(mgr, _cmd, _msg):
 	mgr.console.add_header_spacing()
 	mgr.console.add(BaseConsole.make_text("Debug Help:", "", APColors.ComplexColor.as_special(APColors.SpecialColor.UI_MESSAGE)))
-	for cmd in mgr.get_commands().filter(self, "_is_db_help_visible"):
-		cmd.output_helptext(mgr.console)
+	for cmd in mgr.get_commands():
+		if _is_db_help_visible(cmd):
+			cmd.output_helptext(mgr.console)
 	mgr.console.add_header_spacing()
 func _cmd_debug(mgr, _cmd, _msg):
 	debug_hidden = not debug_hidden
@@ -112,10 +114,18 @@ func _cmd_debug(mgr, _cmd, _msg):
 	mgr.console.add_header_spacing()
 
 func get_enabled_commands():
-	return _commands.filter(self, "_cmd_is_enabled")
+	var result := []
+	for cmd in _commands:
+		if _cmd_is_enabled(cmd):
+			result.append(cmd)
+	return result
 
 func get_debug_commands():
-	return _commands.filter(self, "_cmd_is_debug")
+	var result := []
+	for cmd in _commands:
+		if _cmd_is_debug(cmd):
+			result.append(cmd)
+	return result
 
 func setup_basic_commands():
 	var cmd_help = ConsoleCommand.new("/help")

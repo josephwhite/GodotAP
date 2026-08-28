@@ -26,18 +26,17 @@ func _ready():
 func _on_creds_updated(creds):
 	save_connection(creds)
 
+## Load Connection info from user folder.
 static func load_connection():
 	var conn_info_file = Util._file_open("user://ap/connection.dat", File.READ)
 	if not conn_info_file: return
 	var creds = _get_ap().creds
 	if not creds.read(conn_info_file):
-		# Pre-T3 connection.dat had 3 lines (no password); reading the 4th line
-		# hits EOF and read() fails. Fall back to the legacy 3-line format.
+		# Safety for no password found
 		conn_info_file.seek(0)
-		creds.update(
-			conn_info_file.get_line(), conn_info_file.get_line(),
-			conn_info_file.get_line(), "")
+		creds.update(conn_info_file.get_line(), conn_info_file.get_line(), conn_info_file.get_line(), "")
 	conn_info_file.close()
+## Save Connection info to user folder.
 static func save_connection(creds):
 	Util._make_dir_recursive("user://ap/")
 	var conn_info_file = Util._file_open("user://ap/connection.dat", File.WRITE)

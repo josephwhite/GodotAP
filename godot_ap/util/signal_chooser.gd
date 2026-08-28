@@ -43,7 +43,7 @@ func register_call(proc, on_chosen):
 
 func register_multiple(causes, effects):
 	assert(causes.size() == effects.size())
-	for q in causes.size():
+	for q in range(causes.size()):
 		register_signal(causes[q], effects[q])
 	return self
 

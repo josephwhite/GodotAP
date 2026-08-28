@@ -52,8 +52,14 @@ func sort_by_prev_index(a, b):
 	return _sort_index_data.get(b, 99999) - _sort_index_data.get(a, 99999)
 
 func do_sort(a, b):
-	var sorters = [funcref(self, "sort_by_dest"),funcref(self, "sort_by_item"),funcref(self, "sort_by_src"),funcref(self, "sort_by_loc"),funcref(self, "sort_by_status")]
-	for q in sort_cols.size():
+	var sorters = [
+		funcref(self, "sort_by_dest"),
+		funcref(self, "sort_by_item"),
+		funcref(self, "sort_by_src"),
+		funcref(self, "sort_by_loc"),
+		funcref(self, "sort_by_status")
+	]
+	for q in range(sort_cols.size()):
 		var c = sorters[sort_cols[q]].call_func(a,b)
 		if c < 0: return sort_ascending[sort_cols[q]]
 		elif c > 0: return not sort_ascending[sort_cols[q]]
@@ -137,7 +143,9 @@ func sort_click(mouse_button, index):
 					vbox.add_child(hbox)
 			4: # Status
 				var arr = [FORCE_ALL]
-				arr.append_array(Util.reversed(NetworkHint.status_names.keys()).filter(self, "_status_filter"))
+				for s in Util.reversed(NetworkHint.status_names.keys()):
+					if _status_filter(s):
+						arr.append(s)
 				for s in arr:
 					var hbox = GUI.make_cbox_row(s if s is String else NetworkHint.status_names[s],
 						status_filters.get(s, true),
@@ -171,7 +179,7 @@ func _ready():
 	headings.append(BaseConsole.make_c_text("Finding Player"))
 	headings.append(BaseConsole.make_c_text("Location"))
 	headings.append(BaseConsole.make_c_text("Status ↓"))
-	for q in headings.size():
+	for q in range(headings.size()):
 		headings[q].connect("clicked", self, "sort_click", [q])
 	hint_container = GridContainer.new()
 	hint_container.columns = 5
@@ -196,7 +204,7 @@ func load_hints(hints):
 	refresh_hints()
 func refresh_hints():
 	_sort_index_data.clear()
-	for q in _stored_hints.size():
+	for q in range(_stored_hints.size()):
 		_sort_index_data[_stored_hints[q]] = q
 	_stored_hints.sort_custom(self, "do_sort")
 

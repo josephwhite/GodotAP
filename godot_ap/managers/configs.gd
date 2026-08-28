@@ -27,21 +27,21 @@ static func _rand_hex():
 
 static func generate_uuid():
 	var ret = ""
-	for q in 8:
+	for q in range(8):
 		ret += _rand_hex()
 	ret += "-"
-	for q in 4:
+	for q in range(4):
 		ret += _rand_hex()
 	ret += "-"
 	ret += "4"
-	for q in 3:
+	for q in range(3):
 		ret += _rand_hex()
 	ret += "-"
 	ret += _HEX_CHARS.substr(_randi_range(8, 11), 1)
-	for q in 3:
+	for q in range(3):
 		ret += _rand_hex()
 	ret += "-"
-	for q in 12:
+	for q in range(12):
 		ret += _rand_hex()
 	return ret
 

@@ -96,7 +96,7 @@ func output_usage(console):
 	console.add(BaseConsole.make_text("Usage:\n%s" % get_helptext(), "", APColors.ComplexColor.as_special(APColors.SpecialColor.UI_MESSAGE)))
 
 func is_disabled():
-	for i in disabled_targets.size():
+	for i in range(disabled_targets.size()):
 		if disabled_targets[i].call(disabled_methods[i]):
 			return true
 	return false

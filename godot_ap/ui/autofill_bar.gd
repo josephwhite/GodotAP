@@ -30,9 +30,9 @@ func _draw():
 	var y = sz.y-(VMARGIN+VPADDING)-fh
 	draw_rect(Rect2(Vector2.ZERO,rect_size), get_bg_color())
 	_hitboxes.clear()
-	for q in strings.size():
+	for q in range(strings.size()):
 		_hitboxes.append(Rect2(HMARGIN,VMARGIN+(lh*(strings.size()-q-1)),sz.x-2*HMARGIN,lh-2*VPADDING))
-	for q in strings.size():
+	for q in range(strings.size()):
 		var s = strings[q]
 		if q == hov_ind:
 			draw_rect(Rect2(HMARGIN,y-VPADDING,sz.x-(2*HMARGIN), lh-(2*VMARGIN)), get_sel_color())
@@ -50,7 +50,7 @@ func _process(_delta):
 	if _has_mouse:
 		var pos = get_viewport().get_mouse_position() + Util.MOUSE_OFFSET - rect_global_position
 		var found = false
-		for q in _hitboxes.size():
+		for q in range(_hitboxes.size()):
 			if _hitboxes[q].has_point(pos):
 				if hov_ind != q:
 					hov_ind = q

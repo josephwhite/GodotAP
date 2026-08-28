@@ -79,7 +79,7 @@ static func is_rich_color_name(s):
 ## Gets a RichColor from a string. 'RichColor.NIL' is returned if the string is invalid.
 static func rich_color_from_name(s):
 	var keys = RichColor.keys()
-	for i in keys.size():
+	for i in range(keys.size()):
 		if str(keys[i]).to_lower() == s:
 			return RichColor.values()[i]
 	return RichColor.NIL
