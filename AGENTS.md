@@ -102,8 +102,6 @@ Custom engine builds can crash natively (0xc0000005) on constructs stock Godot h
 - Retries paced by one-shot `SceneTreeTimer(0.25 * _connect_attempts)` → `_retry_dial()` (no-op unless still-`SOCKET_CONNECTING`); scheme flips + cycle counting live in shared `_advance_retry()`, used by both the error-event path and instant `connect_to_url` failures so every loop terminates at the cap.
 - `_on_ws_closed`: already-`DISCONNECTED` status = no-op — late close events after give-up must not trigger the accidental-reconnect branch.
 
-**Interim warning (custom builds):** set `AP.casus["DISABLE_BITWISE_OPERATIONS"] = true` before connecting (see `docs/ENGINE_ODDITIES.md`). Delete this warning once the vendored mod re-syncs past the commit adding these keys.
-
 ## Tools
 - Check for Godot 3.x Engine/Editor installations for running a CLI `--editor --quit` test for parse/class-registration errors.
 
