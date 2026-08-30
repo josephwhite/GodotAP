@@ -1,0 +1,119 @@
+# Merge-time backstop for Relative-refs enforcement for godot_ap .tscn/.tres [ext_resource] refs.
+#
+# Godot 3.6 editor absolutizes ext_resource paths on save.
+# Breaks relocatability of godot_ap/ (res://addons/, res://mods-unpacked/, etc.).
+
+name: relative-refs
+
+permissions:
+  contents: read
+
+env:
+  POWERSHELL_TELEMETRY_OPTOUT: 1
+
+concurrency:
+  group: relative-refs-${{ github.ref }}
+  cancel-in-progress: false
+
+on:
+  push:
+    branches:
+      # Limit to downpatch-3.6.0 and derived branches
+      - "downpatch-3.6.0"
+      - "downpatch-3.6.0*"
+      - "downpatch-3.6.0/**"
+  pull_request:
+    # 'labeled' so applying the fix-relative-refs label re-triggers fix-pr
+    types: [opened, synchronize, reopened, labeled]
+    branches:
+      - "downpatch-3.6.0"
+  workflow_dispatch:
+    inputs:
+      fix:
+        description: "Auto-fix by rewriting relative refs and pushing back"
+        type: boolean
+        default: false
+
+jobs:
+  # Read-only scan: fail-and-show-diff if any absolute ref survives.
+  check:
+    name: Check godot_ap refs are folder-relative
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fail if any absolute res://godot_ap ext_resource refs
+        shell: pwsh
+        run: |
+          $files = Get-ChildItem -Path "godot_ap" -Recurse -Include *.tscn,*.tres
+          $pattern = 'path="res://godot_ap/'
+          $bad = @($files | Where-Object {
+            (Get-Content -Raw -LiteralPath $_.FullName) -match [regex]::Escape($pattern)
+          })
+          if ($bad.Count -gt 0) {
+            Write-Output "Absolute ext_resource refs found:"
+            $bad | ForEach-Object {
+              Write-Output "  $($_.FullName)"
+            }
+            Write-Output "Run: pwsh hooks/pre-commit-relativize.ps1 <those files>"
+            exit 1
+          }
+          Write-Output "OK: all godot_ap .tscn/.tres refs are folder-relative"
+
+  # Opt-in auto-fix for a PR: gate on the fix-relative-refs label. 
+  fix-pr:
+    name: Auto-fix relative refs in PR
+    if: |
+      github.event_name == 'pull_request' &&
+      contains(github.event.pull_request.labels.*.name, 'fix-relative-refs')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Lets the auto-fix commit be pushed back to the PR branch.
+          ref: ${{ github.head_ref }}
+      - name: Rewrite absolute refs to folder-relative
+        shell: pwsh
+        run: |
+          $files = @(Get-ChildItem -Path "godot_ap" -Recurse -Include *.tscn,*.tres | ForEach-Object { $_.FullName })
+          & hooks/pre-commit-relativize.ps1 @files
+      # Commits only the rewritten files
+      - name: Commit and push re-relativized files
+        uses: stefanzweifel/git-auto-commit-action@v7
+        with:
+          commit_message: "ci: relativize godot_ap ext_resource paths"
+          file_pattern: "godot_ap/**.tscn godot_ap/**.tres"
+
+  # Opt-in auto-fix for a direct branch: manual dispatch with fix=true. 
+  fix-dispatch:
+    name: Auto-fix relative refs (manual dispatch)
+    if: |
+      github.event_name == 'workflow_dispatch' &&
+      github.event.inputs.fix == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Pin to the dispatched branch so the hook rewrites the right tree and pushes to it.
+          ref: ${{ github.ref }}
+          # GH_PAT is required for updating target branch
+          token: ${{ secrets.GH_PAT }}
+      - name: Rewrite absolute refs to folder-relative
+        shell: pwsh
+        run: |
+          $files = @(Get-ChildItem -Path "godot_ap" -Recurse -Include *.tscn,*.tres | ForEach-Object { $_.FullName })
+          & hooks/pre-commit-relativize.ps1 @files
+      - name: Commit and push re-relativized files
+        uses: stefanzweifel/git-auto-commit-action@v7
+        with:
+          commit_message: "ci: relativize godot_ap ext_resource paths"
+          branch: ${{ github.ref_name }}
+          file_pattern: "godot_ap/**.tscn godot_ap/**.tres"

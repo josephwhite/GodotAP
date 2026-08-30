@@ -3,7 +3,6 @@
 Games sometimes ship modified or forked Godot 3.6 engine builds. 
 Constructs that stock Godot handles fine can crash natively on these builds.
 This document catalogs each known build, the oddities observed on it, and the solution the GodotAP downpatch takes for each.
-For "what stock 3.6 actually does", compare against [Godot 3.6's source code](https://github.com/godotengine/godot/tree/3.6).
 
 ## Games
 
@@ -17,10 +16,6 @@ For "what stock 3.6 actually does", compare against [Godot 3.6's source code](ht
 Rules treated as unsafe across multiple builds. 
 Each is tagged with the game section(s) where it was confirmed.
 Fixes are applied unconditionally unless noted otherwise (casus).
-
-| Game(s) | Construct | Behavior | Solution |
-|---|---|---|---|
-|||||
 
 ## Y2ROLL
 

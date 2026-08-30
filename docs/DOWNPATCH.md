@@ -1,11 +1,8 @@
 # Godot 4.x → 3.6 Downpatch Reference
 
-> Extracted from AGENTS.md. Generic Godot 4.x → 3.6 downpatch migration reference —
-> read in full for any 4.x→3.6 API-availability question. AGENTS.md keeps:
-> project goals, session conventions, high-danger traps, Part 2 (GodotAP-specific
-> fixes & lessons), and the shared References.
-
 This section is for generic downpatch migration from Godot 4.x (4.4 in practice) to Godot 3.6.
+
+Never infer availability from 4.x behavior.
 
 ### TabContainer API Differences (3.6)
 - `set_tab_hidden(tab_idx, hidden)` in 3.6 **always advances `current_tab` to the next available tab** (tab_container.cpp, `TabContainer::set_tab_hidden`) — even when `hidden=false`. In 4.x unhiding never changes the current tab. Save the previous tab and restore it afterwards.
@@ -1041,12 +1038,7 @@ Available in 3.6 ✓
     - [Godot 3.6 Theme overrides](https://docs.godotengine.org/en/3.6/getting_started/step_by_step/gui_skinning.html)
     - [Godot 3.6 Signals](https://docs.godotengine.org/en/3.6/getting_started/step_by_step/signals.html)
     - [Godot 3.6 StreamPeerTCP](https://docs.godotengine.org/en/3.6/classes/class_streampeertcp.html)
-    - [Godot 3.6 Array class](https://docs.godotengine.org/en/3.6/classes/class_array.html) — verify array-method availability HERE, not from 4.x analogy (see "Array & Dictionary Operations")
+    - [Godot 3.6 Array class](https://docs.godotengine.org/en/3.6/classes/class_array.html)
 - [Godot 3.6 Source Code](https://github.com/godotengine/godot/tree/3.6)
     - C++ citations in this doc reference tag `3.6-stable` (commit `de2f0f147`)
-
-### See also
-- AGENTS.md — Part 2 (GodotAP-specific fixes & lessons), Session & Repo Conventions, High-Danger Traps
-- docs/ENGINE_ODDITIES.md — per-game custom-build oddities and downpatch solutions
-- docs/TESTING.md — GUT 7.4.3 test workflow
 

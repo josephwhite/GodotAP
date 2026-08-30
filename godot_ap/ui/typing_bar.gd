@@ -59,7 +59,7 @@ func _ready():
 		connect("focus_entered", self, "_focus")
 		connect("focus_exited", self, "_unfocus")
 		connect("text_entered", self, "_submit_text")
-		connect("text_changed", self, "update")
+		connect("text_changed", self, "_on_text_changed")
 		show_bar(visible)
 
 	rect_min_size.y = calc_height()
@@ -91,6 +91,9 @@ func _gui_input(event):
 					return
 	return
 
+
+func _on_text_changed(_new_text):
+	update()
 
 func update():
 	.update()

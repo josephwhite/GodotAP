@@ -183,6 +183,8 @@ static func bit_count(val):
 ## so hostnames go through the IP resolver queue first.
 ## The async connect handshake is driven by re-invoking
 ## put_data(), which runs the internal connection poll.
+## UNUSED: reach test disabled. Raw-TCP probes produce HTTP 400 Bad Request entries in server logs. Kept only for manual diagnostics.
+## TODO: Either delete or move to some kind of "test tooling" file.
 static func _tcp_probe(host, port, timeout_ms = 2500):
 	var deadline = OS.get_ticks_msec() + timeout_ms
 	var addr_str = host

@@ -132,6 +132,8 @@ var conn ## The active Archipelago connection
 
 ## Emits strings representing stages of the connection process. Useful for displaying connection progress to users.
 signal connect_step(message)
+## Emits a string when the connection attempt is abandoned after failing.
+signal connect_failed(message)
 ## The possible connection status states.
 enum APStatus {
 	DISCONNECTED, ## Not connected to any Archipelago server
@@ -167,24 +169,21 @@ var _connecting_part # Label in the 'output_console' displaying the messages fro
 var _connect_attempts = 1 # Connection attempt counter
 var _wss = true # If current connection attempt is using secure sockets. Alternates each attempt.
 const MAX_CONNECT_CYCLES = 5 # Full wss/ws cycles before giving up
-
-var _probe_ok = null # Cached raw-TCP reachability verdict for the current target ('null' while unprobed)
-var _probe_time = 0
+const CONNECT_WATCHDOG_SECS = 7.0 # Max time left in SOCKET_CONNECTING before force give-up (silent-hang guard)
+var _connect_watchdog = null # One-shot SceneTreeTimer; 'null' while unarmed
 
 ## Returns the URL currently being targetted for connection
 func get_url():
 	return "%s://%s:%s" % ["wss" if _wss else "ws",creds.ip,creds.port]
 
-## Raw-TCP server reach test. Avoids WebSocketClient error.
-## Verdict cached briefly so connection retries don't probe on every attempt.
+## Raw-TCP server reach test.
+## UNUSED: reach test disabled. Raw-TCP probes produce HTTP 400 Bad Request entries in server logs. Kept only for manual diagnostics.
+## TODO: Either delete or move to some kind of "test tooling" file.
 func _server_reachable():
-	var now = OS.get_ticks_msec()
-	if _probe_ok == null or now - _probe_time >= 10000:
-		_probe_ok = Util._tcp_probe(creds.ip, int(creds.get_port()))
-		_probe_time = now
-		if not _probe_ok:
-			error("Server '%s:%s' unreachable! Not attempting a WebSocket connection." % [creds.ip, creds.get_port()])
-	return _probe_ok
+	var probe_ok = Util._tcp_probe(creds.ip, int(creds.get_port()))
+	if not probe_ok:
+		error("Server '%s:%s' unreachable!" % [creds.ip, creds.get_port()])
+	return probe_ok
 
 ## Reconnect to Archipelago with the same information as before
 func ap_reconnect():
@@ -193,11 +192,6 @@ func ap_reconnect():
 		_queue_reconnect = true
 		return
 	emit_signal("connect_step", "Connecting...")
-	if not _server_reachable():
-		_set_status(APStatus.DISCONNECTED)
-		emit_signal("disconnected")
-		emit_signal("connect_step", "Server unreachable!")
-		return
 	_set_status(APStatus.SOCKET_CONNECTING)
 	_connect_attempts = 1
 	_wss = true
@@ -207,6 +201,7 @@ func ap_reconnect():
 		_log("Connection to '%s' failed! Retrying (%d)" % [get_url(), _connect_attempts])
 		_wss = not _wss
 		if _wss: _connect_attempts += 1
+	_start_connect_watchdog() # Covers both sync-fail and async-ok; error path still arms a give-up
 
 ## Connect to Archipelago with the specified connection information
 func ap_connect(room_ip, room_port, slot_name, room_pwd = ""):
@@ -214,7 +209,6 @@ func ap_connect(room_ip, room_port, slot_name, room_pwd = ""):
 		ap_disconnect() # Do it here so the ip/port/slot are correct in the disconnect message
 	open_logger()
 	creds.update(room_ip, room_port, slot_name, room_pwd)
-	_probe_ok = null
 	ap_reconnect()
 
 ## Disconnect from Archipelago
@@ -223,6 +217,7 @@ func ap_disconnect():
 		_connecting_part = null
 	if status == APStatus.DISCONNECTED or status == APStatus.DISCONNECTING:
 		return
+	_stop_connect_watchdog()
 	_set_status(APStatus.DISCONNECTING)
 	emit_signal("connect_step", "Disconnecting...")
 	_socket.disconnect_from_host()
@@ -324,6 +319,7 @@ func _process(_delta):
 		_socket.poll()
 
 func _on_ws_connected(_protocol=""):
+	_stop_connect_watchdog()
 	_socket_state = WebSocketState.STATE_OPEN
 	var _peer = _socket.get_peer(1)
 	if _peer and _peer.has_method("set_write_mode"):
@@ -333,6 +329,7 @@ func _on_ws_connected(_protocol=""):
 		_set_status(APStatus.CONNECTING)
 
 func _on_ws_closed(_was_clean = false):
+	_stop_connect_watchdog()
 	_socket_state = WebSocketState.STATE_CLOSED
 	if hang_clock:
 		hang_clock.stop()
@@ -348,6 +345,7 @@ func _on_ws_closed(_was_clean = false):
 ## Abandon a connection attempt: tear down the socket, reset to idle, and
 ## inform both hosts (signals) and console users.
 func _give_up_connecting(msg, tip):
+	_stop_connect_watchdog()
 	_socket.disconnect_from_host()
 	_set_status(APStatus.DISCONNECTED)
 	_log("Connection to '%s' failed! Giving up: %s" % [get_url(), msg])
@@ -356,7 +354,21 @@ func _give_up_connecting(msg, tip):
 		_connecting_part.hint_tooltip += "\n" + tip
 		_connecting_part = null
 	emit_signal("connect_step", msg)
+	emit_signal("connect_failed", msg)
 	emit_signal("disconnected")
+
+## Arm the stuck-connection watchdog
+func _start_connect_watchdog():
+	_stop_connect_watchdog()
+	_connect_watchdog = get_tree().create_timer(CONNECT_WATCHDOG_SECS)
+	_connect_watchdog.connect("timeout", self, "_on_connect_timeout")
+func _stop_connect_watchdog():
+	_connect_watchdog = null
+## When Connection Watchdog timesout, force give up.
+func _on_connect_timeout():
+	_connect_watchdog = null
+	if status == APStatus.SOCKET_CONNECTING:
+		_give_up_connecting("Connection failed!", "Server not responding — check that it is running, verify your connection details, or '/reconnect' to try again.")
 
 ## Flip the scheme for the next ws connection attempt.
 ## Either schedule it (with backoff) or give up.
@@ -365,9 +377,6 @@ func _advance_retry():
 	if _wss: _connect_attempts += 1
 	if _connect_attempts > MAX_CONNECT_CYCLES:
 		_give_up_connecting("Connection failed!", "Failed connecting too many times. Check your connection details, or '/reconnect' to try again.")
-		return
-	if not _server_reachable():
-		_give_up_connecting("Server unreachable!", "Server unreachable. Check your connection details, or '/reconnect' to try again.")
 		return
 	get_tree().create_timer(0.25 * _connect_attempts).connect("timeout", self, "_retry_dial")
 
@@ -378,9 +387,12 @@ func _retry_dial():
 	if err:
 		_log("Connection to '%s' failed immediately! Retrying (%d)" % [get_url(), _connect_attempts])
 		_advance_retry()
+	else:
+		_start_connect_watchdog()
 
 ## ws-error event path
 func _on_ws_error():
+	_stop_connect_watchdog()
 	_socket_state = WebSocketState.STATE_CLOSED
 	if status == APStatus.SOCKET_CONNECTING:
 		if _connect_attempts >= MAX_CONNECT_CYCLES:

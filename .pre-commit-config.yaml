@@ -1,0 +1,16 @@
+repos:
+  - repo: local
+    hooks:
+      # Only run these checks on downpatch-3.6.0* branches
+      - id: branch-check
+        name: Branch check (Godot 3.6)
+        entry: bash -c 'branch=$(git rev-parse --abbrev-ref HEAD); if [[ ! "$branch" =~ ^downpatch-3\.6\.0 ]]; then exit 0; fi'
+        language: system
+        always_run: true
+        pass_filenames: false
+      - id: relativize-ext-resources
+        name: Relativize godot_ap ext_resource paths (Godot 3.6)
+        entry: pwsh -NoProfile -File hooks/pre-commit-relativize.ps1
+        language: system
+        types: [text]
+        files: ^godot_ap/.*\.(tscn|tres)$

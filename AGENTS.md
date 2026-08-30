@@ -5,7 +5,10 @@ A file for [guiding coding agents](https://agents.md/).
 ## Session & Repo Guidelines
 
 - Never commit/push/open PRs/open issues.
-- Append one brief [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/#specification) bullet to `commit.txt` for each code change, so the file reads as a running changelog summary. Track the change itself, not surrounding reasoning.
+- Maintain `commit.txt` as a final-state changelog:
+    - One [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/#specification) bullet per committed change, in final form. 
+    - No intermediate/journey states and iteration history.
+- Branch name must match `downpatch-3.6.0*` for CI.
 
 ## Project Goals
 1. **Archipelago library + WebSocket client for Godot 3.6.**
@@ -20,9 +23,7 @@ A file for [guiding coding agents](https://agents.md/).
 
 ## Downpatch Reference (Godot 4 → 3.6)
 
-Full generic downpatch reference (API renames, GDScript syntax, scene/theme/resource rules, File I/O, WebSocket overhaul): **[docs/DOWNPATCH.md](docs/DOWNPATCH.md)**.
-
-- **Verify Godot 3.6 functionality against official sources** — Godot 3.6 class docs for engine-behavior claims. Never infer availability from 4.x behavior.
+[Full generic downpatch reference](docs/DOWNPATCH.md).
 
 ## GodotAP-Specific Fixes & Lessons
 
@@ -36,13 +37,13 @@ This section is repo-specific application/integration notes of the DOWNPATCH rul
 
 | 4.x Code | 3.6 Equivalent |
 |---|---|
-| `SOCKET_CONNECTING`: `connect_to_url()`, wait `STATE_OPEN` | `_client.connect_to_url(url)` + `connection_established` signal → `_on_connected()` |
-| `STATE_CLOSED` → initiate `connect_to_url()` | `ap_reconnect()` / `_on_error()` retry calls `connect_to_url()` directly |
-| `STATE_CONNECTING` → poll → STATE_CLOSED: retry with `_wss` toggle | `connection_error` signal → `_on_error()` with retry |
-| `STATE_OPEN` → `get_available_packet_count()` loop | `data_received` signal → `_on_data()` (fires once per message) |
+| `SOCKET_CONNECTING`: `connect_to_url()`, wait `STATE_OPEN` | `_socket.connect_to_url(url)` + `connection_established` signal → `_on_ws_connected()` |
+| `STATE_CLOSED` → initiate `connect_to_url()` | `ap_reconnect()` / `_on_ws_error()` retry calls `connect_to_url()` directly |
+| `STATE_CONNECTING` → poll → STATE_CLOSED: retry with `_wss` toggle | `connection_error` signal → `_on_ws_error()` with retry |
+| `STATE_OPEN` → `get_available_packet_count()` loop | `data_received` signal → `_on_ws_data()` (fires once per message) |
 | `STATE_CLOSING` → poll until closed | `disconnect_from_host()` then `connection_closed` fires |
-| `send_text(data)` | `_client.get_peer(1).put_packet(data.to_utf8())` |
-| `send_command()` → `_socket.send_text(s)` | `send_command()` → `_client.get_peer(1).put_packet(s.to_utf8())` |
+| `send_text(data)` | `_socket.get_peer(1).put_packet(data.to_utf8())` |
+| `send_command()` → `_socket.send_text(s)` | `send_command()` → `_socket.get_peer(1).put_packet(s.to_utf8())` |
 | `send_packet()` → `JSON.stringify` + `send_text` | `send_packet()` → `to_json()` + `put_packet` |
 | `inbound_buffer_size` | **No 3.6 equivalent** — WebSocketClient doesn't expose buffer size |
 
@@ -55,7 +56,7 @@ func _process(delta):
         _socket.poll()
 ```
 
-**Known expected error noise:** `E 0:00:18.432 _do_handshake: TLS handshake error: -29184` from `modules/mbedtls/stream_peer_mbedtls.cpp` (`StreamPeerMbedTLS::_do_handshake`) during `_process()`. `-29184` = `MBEDTLS_ERR_SSL_INVALID_RECORD` — the target server answered plain HTTP to the initial `wss://` probe. This is the **expected** wss→ws fallback (wss-first is upstream `EmilyV99/GodotAP` behavior; `archipelago.gd` toggles `_wss` in `_on_ws_error` and retries over `ws://`). Connection succeeds on the fallback. **Not a bug, not a 3.6 regression** — 4.x suppresses this print, 3.6 hard-`ERR_PRINT`s it (stream_peer_mbedtls.cpp, `StreamPeerMbedTLS::_do_handshake`). Cannot be silenced from GDScript; a C++ `ERR_PRINT`. Verified safe: failed handshake path (wsl_client.cpp, `WSLClient::_do_handshake`) calls `disconnect_from_host()` (nulls `_connection`, so retry won't hit `ERR_ALREADY_IN_USE` in `WSLClient::connect_to_host` — wsl_client.cpp) then `_on_error()` → only `connection_error` fires, no `connection_closed` conflict with `ap_reconnect()`.
+**Known expected error noise:** `_do_handshake: TLS handshake error: -29184` (`MBEDTLS_ERR_SSL_INVALID_RECORD`) during `_process()` — expected wss→ws fallback: upstream is wss-first, `archipelago.gd` toggles `_wss` in `_on_ws_error` and retries `ws://`. **Not a bug, not a 3.6 regression** — 4.x suppresses this print, 3.6 `ERR_PRINT`s it (stream_peer_mbedtls.cpp, `StreamPeerMbedTLS::_do_handshake`), unsilenceable from GDScript. Verify-safe: the failed-handshake path (`WSLClient::_do_handshake`) `disconnect_from_host()`s then only `connection_error` fires — no `connection_closed` conflict with `ap_reconnect()`.
 
 ### Theme Fixes
 
@@ -80,30 +81,24 @@ Button/CheckBox/OptionButton/MenuButton intentionally left at collapsed state (n
 - `godot_ap/autoloads/archipelago.gd` (`output_console`) — setter also must sync the member var itself, since ~25 internal reads bypass the getter; internal writes in `_init_console()`/`close_console()` must call `set_output_console()` explicitly.
 - **`godot_ap/autoloads/archipelago.gd` (`status`)** — all internal writes must call `_set_status(APStatus.X)` so `status_updated` fires (and `conn` is nulled + reconnect queue handled on DISCONNECTED). Grep: `rg 'status\s*=\s*APStatus'`.
 
-### Signals & SceneTree
-- SceneTree API site conversions (`change_scene_to`, `create_timer`/`yield `idle_frame`) in `util.gd` and `archipelago.gd`.
-
-### JSON Float-Key Hits
-`parse_json` float trap (DOWNPATCH.md) applied at: `network_hint.gd` (hint status → "unknown"), `base_console.gd` (console status), `network_item.gd` (`flags` bitfield float `&` crash), `archipelago.gd` (slot_locations keys + `ReceivedItems` index).
-
 ### Fonts
-- `godot_ap/util/font_storage.gd`, `godot_ap/util/util.gd` (`font_mod()`, `_get_supported_opentype_variants()`) — FontVariation features dropped.
-- DynamicFont fallbacks in `.tres`: `godot_ap/ui/themes/symbols_font.tres`, `themes/basic_font.tres`, `ui/console_font.tres` — `fallback/N`, not `fallbacks = [...]`.
+- FontVariation features dropped.
+- DynamicFont fallbacks in `.tres`: `fallback/N`, not `fallbacks = [...]`.
 
-### Engine-Compat Settings (`casus` dict)
-Custom engine builds can crash natively (0xc0000005) on constructs stock Godot handles fine — per-game build IDs, oddities, and downpatch solutions live in `docs/ENGINE_ODDITIES.md`.
+### Relative Resource Paths
+- All `.gd` preloads plus `.tscn`/`.tres` `ext_resource` refs are folder-relative or resolved from the runtime base dir (`archipelago.gd:_ap_base_dir` from `get_script().resource_path`). The `godot_ap/` folder therefore installs at any depth — `res://godot_ap/`, `res://addons/godot_ap/`, `res://mods-unpacked/<ModID>/…`.
+- Exception: `project.godot`: autoload/theme/class registration is always absolute (engine requirement)
+- **Editor resave absolutizes** `ext_resource` paths in `.tscn`/`.tres` the moment the Godot editor saves them. Enforce relative paths using pre-commit and CI.
 
-- **Settings live in a `casus` Dictionary export on the `Archipelago` autoload** (not flat exports, not `AP_` prefix). All keys default `false` = stock behavior. Read via `Util._casus(key)` at call time so mods can set them before connecting.
-- Key: `DISABLE_BITWISE_OPERATIONS` (route all bit tests through `Util.has_flag(flags, bit)` — gated `int(flags / pow(2, bit)) % 2 == 1`, else `flags & (1 << bit) != 0`).
-
-### TCP Preflight & Connect-Failure Ladder
-- `Util._tcp_probe(host, port, timeout_ms = 2500)` — raw `StreamPeerTCP` reachability check via `Archipelago._server_reachable()`, run before `connect_to_url` in `ap_reconnect()` and before each retry; verdict cached ~10s (`_probe_ok`/`_probe_time`, reset in `ap_connect()` on new target). Dead target → console error + graceful disconnect, WebSocketClient never touched — a **UX** guardrail, not crash protection.
-- `_on_ws_error()` gives up after `MAX_CONNECT_CYCLES = 5` full wss/ws cycles (was 50 — ~2-minute hang). All give-up paths (too-many-cycles + server-unreachable) route through `_give_up_connecting(msg, tip)`: tears down socket, sets `DISCONNECTED` (**not** DISCONNECTING), emits **both** `connect_step(msg)` and `disconnected` so embedded hosts reset their UI.
+### Connect-Failure Ladder
+- Raw-TCP preflight disabled because empty handshake logged HTTP 400s; kept `## UNUSED` for diagnostics. Dead targets fall through to `connect_to_url` → engine `connection_error` → ladder.
+- `_on_ws_error()` gives up after `MAX_CONNECT_CYCLES = 5` full wss/ws cycles (was 50 — ~2-minute hang); the retry cycle in `_advance_retry()` caps at the same limit. Every give-up routes through `_give_up_connecting(msg, tip)`: tears down socket, sets `DISCONNECTED` (**not** DISCONNECTING), emits **`connect_step(msg)`, `connect_failed(msg)`, and `disconnected`** so embedded hosts reset their UI.
+- Stuck-connect watchdog: `CONNECT_WATCHDOG_SECS = 7.0` one-shot `SceneTreeTimer` armed on every dial (`ap_reconnect` async-ok + `_retry_dial`), disarmed on connected/closed/error/give-up/disconnect. Stock `WSLClient` has **no connect timeout** — silent/unanswering targets hang in `SOCKET_CONNECTING` forever; watchdog forces `_give_up_connecting` so `connect_failed` always fires. Late timer fires no-op via the `SOCKET_CONNECTING` status gate.
 - Retries paced by one-shot `SceneTreeTimer(0.25 * _connect_attempts)` → `_retry_dial()` (no-op unless still-`SOCKET_CONNECTING`); scheme flips + cycle counting live in shared `_advance_retry()`, used by both the error-event path and instant `connect_to_url` failures so every loop terminates at the cap.
 - `_on_ws_closed`: already-`DISCONNECTED` status = no-op — late close events after give-up must not trigger the accidental-reconnect branch.
 
 ## Tools
-- Check for Godot 3.x Engine/Editor installations for running a CLI `--editor --quit` test for parse/class-registration errors.
+- [`pre-commit`](\.pre-commit-config.yaml)
 
 ## References
 
@@ -112,16 +107,6 @@ Custom engine builds can crash natively (0xc0000005) on constructs stock Godot h
 - [GodotAP Upstream (Godot 4)](https://github.com/EmilyV99/GodotAP)
 ### Godot
 - [Godot 3.6 Docs](https://docs.godotengine.org/en/3.6)
-    - [Godot 3.6 GDScript Basics](https://docs.godotengine.org/en/3.6/tutorials/scripting/gdscript/gdscript_basics.html)
-    - [Godot 3.6 GDScript Exports](https://docs.godotengine.org/en/3.6/getting_started/scripting/gdscript/gdscript_exports.html)
-    - [Godot 3.6 WebSocketClient](https://docs.godotengine.org/en/3.6/classes/class_websocketclient.html)
-    - [Godot 3.6 WebSocketServer](https://docs.godotengine.org/en/3.6/classes/class_websocketserver.html)
-    - [Godot 3.6 File class](https://docs.godotengine.org/en/3.6/classes/class_file.html)
-    - [Godot 3.6 Directory class](https://docs.godotengine.org/en/3.6/classes/class_directory.html)
-    - [Godot 3.6 Theme overrides](https://docs.godotengine.org/en/3.6/getting_started/step_by_step/gui_skinning.html)
-    - [Godot 3.6 Signals](https://docs.godotengine.org/en/3.6/getting_started/step_by_step/signals.html)
-    - [Godot 3.6 StreamPeerTCP](https://docs.godotengine.org/en/3.6/classes/class_streampeertcp.html)
-    - [Godot 3.6 Array class](https://docs.godotengine.org/en/3.6/classes/class_array.html)
 - [Godot 3.6 Source Code](https://github.com/godotengine/godot/tree/3.6)
 ### Godot Addons/Libs
 - [GUT — Godot Unit Test](https://github.com/bitwes/Gut)

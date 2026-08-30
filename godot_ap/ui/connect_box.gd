@@ -17,6 +17,7 @@ func _ready():
 	refresh_creds(_get_ap().creds)
 	_get_ap().connect("connected", self, "_on_ap_connected")
 	_get_ap().connect("disconnected", self, "_on_ap_disconnected")
+	_get_ap().connect("connect_failed", self, "_on_connect_failed")
 
 func _on_showpwd_toggled(button_pressed):
 	pwdbox.secret = not button_pressed
@@ -33,6 +34,7 @@ func update_connection(status):
 	pwdbox.editable = not status
 func try_connection():
 	if _get_ap().is_not_connected():
+		errlbl.text = ""
 		_get_ap().ap_connect(ipbox.text, portbox.text, slotbox.text, pwdbox.text)
 		_connect_signals()
 
@@ -53,6 +55,8 @@ func _on_connect_success(_conn, _json):
 func _on_connect_refused(_conn, json):
 	_disconnect_signals()
 	errlbl.text = "ERROR: " + (", ".join(json.get("errors", ["Unknown"])))
+func _on_connect_failed(msg):
+	errlbl.text = "ERROR: " + msg
 func _on_ap_connected(_conn, _json):
 	update_connection(true)
 func _on_ap_disconnected():
