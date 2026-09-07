@@ -58,24 +58,6 @@ func _process(delta):
 
 **Known expected error noise:** `_do_handshake: TLS handshake error: -29184` (`MBEDTLS_ERR_SSL_INVALID_RECORD`) during `_process()` — expected wss→ws fallback: upstream is wss-first, `archipelago.gd` toggles `_wss` in `_on_ws_error` and retries `ws://`. **Not a bug, not a 3.6 regression** — 4.x suppresses this print, 3.6 `ERR_PRINT`s it (stream_peer_mbedtls.cpp, `StreamPeerMbedTLS::_do_handshake`), unsilenceable from GDScript. Verify-safe: the failed-handshake path (`WSLClient::_do_handshake`) `disconnect_from_host()`s then only `connection_error` fires — no `connection_closed` conflict with `ap_reconnect()`.
 
-### Theme Fixes
-
-#### Ghost Overlay: `Console_Bar_Back`/`_Front` + `show_behind_parent`
-- `Console_Bar_Back`/`Console_Bar_Front` are variation types: they override some items and inherit the rest (stylebox, font_color) from their `base_type` in the **same** theme — basis of the ghost-overlay design behind `show_behind_parent`.
-- `typing_bar.tscn` AutofillText must keep `show_behind_parent = true`. Without it, the full-rect ghost `LineEdit` draws ON TOP of the parent typing bar, and its inherited opaque light-theme `Console_Bar` stylebox covers the typed text (invisible in Light Mode).
-
-#### `dark_theme.tres` Stylebox Collapse (connect box transparency)
-Do not collapse all dark-theme styleboxes into one 30%-alpha `StyleBoxFlat` (upstream has ~15 distinct) — the connect box renders transparent/ghosted. Restore sub-resources:
-- id=2 `Console_BG` opaque `Color(0,0,0,1)`
-- id=3 `StyleBoxEmpty` for `Console_Bar` focus + `Console_Bar_Front`
-- id=4 `Console_Bar` normal `Color(0.145098,0.145098,0.145098,1)`
-- id=5 `Panel`/`PanelContainer` `Color(0.174028,0.174028,0.174028,1)` (connect box)
-- id=6 `TooltipPanel` `Color(0.235294,0.235294,0.235294,1)`
-- id=7 `TabContainer` empty
-- `load_steps` 12→18
-
-Button/CheckBox/OptionButton/MenuButton intentionally left at collapsed state (not user-visible yet).
-
 ### Setget Setters
 - `godot_ap/ui/slider_box.gd` (`is_open`) — call `set_is_open()` explicitly on internal writes, incl. `_ready()`-time init.
 - `godot_ap/autoloads/archipelago.gd` (`output_console`) — setter also must sync the member var itself, since ~25 internal reads bypass the getter; internal writes in `_init_console()`/`close_console()` must call `set_output_console()` explicitly.

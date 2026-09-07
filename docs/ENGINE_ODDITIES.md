@@ -17,6 +17,14 @@ Rules treated as unsafe across multiple builds.
 Each is tagged with the game section(s) where it was confirmed.
 Fixes are applied unconditionally unless noted otherwise (casus).
 
+### Casus
+
+For solutions that are needed for one or more game builds but are not universal to Godot 3's stock engine, the below toggles have been added to coalesce GodotAP to these certain rare and restricting environments.
+
+|Casus Toggle|Description|Games|
+|-|-|-|
+|DISABLE_BITWISE_OPERATIONS|Replaces usage of bitwise operators and diverts to other math functions. Needed builds that crash brom performing bit math.|[Y2ROLL](#y2roll)|
+
 ## Y2ROLL
 
 ### Build
