@@ -5,13 +5,19 @@ var slot
 var alias = ""
 var name
 
+
 func get_slot():
 	return Util._get_ap().conn.get_slot(slot)
+
+
 func get_name(use_alias = true):
 	var ret = ""
-	if use_alias: ret = alias
-	if not ret: ret = name
+	if use_alias:
+		ret = alias
+	if not ret:
+		ret = name
 	return ret
+
 
 static func from(json):
 	if json["class"] != "NetworkPlayer":
@@ -26,7 +32,10 @@ static func from(json):
 			v.alias = ""
 	return v
 
+
 func _to_string():
-	return "PLAYER(%s[%s],team %d,slot %d)" % [name,alias,team,slot]
+	return "PLAYER(%s[%s],team %d,slot %d)" % [name, alias, team, slot]
+
+
 func output():
 	return BaseConsole.make_player(slot)

@@ -1,16 +1,32 @@
+# GodotAP for Godot 3.6 pre-commit hooks
+#
+# Hooks to only run on branches starting with "downpatch-3.6.0"  
+# Each custom hook has its own branch params and logic.
+
 repos:
   - repo: local
     hooks:
-      # Only run these checks on downpatch-3.6.0* branches
-      - id: branch-check
-        name: Branch check (Godot 3.6)
-        entry: bash -c 'branch=$(git rev-parse --abbrev-ref HEAD); if [[ ! "$branch" =~ ^downpatch-3\.6\.0 ]]; then exit 0; fi'
-        language: system
-        always_run: true
-        pass_filenames: false
       - id: relativize-ext-resources
         name: Relativize godot_ap ext_resource paths (Godot 3.6)
-        entry: pwsh -NoProfile -File hooks/pre-commit-relativize.ps1
+        entry: pwsh -NoProfile -File hooks/pre-commit-relativize.ps1 -BranchRegex '^downpatch-3\.6\.0'
         language: system
         types: [text]
         files: ^godot_ap/.*\.(tscn|tres)$
+
+  # GDScript linter and formatter
+  - repo: https://github.com/Scony/godot-gdscript-toolkit
+    rev: 3.6.0
+    hooks:
+      - id: gdlint
+        name: gdlint (Godot 3.6)
+        alias: gdlint-36
+        entry: pwsh -NoProfile -File hooks/pre-commit-gdtoolkit.ps1 -Tool gdlint -BranchRegex '^downpatch-3\.6\.0'
+        additional_dependencies: [setuptools<81]   # pkg_resources removed in v81+
+        files: ^godot_ap/.*\.gd$
+      - id: gdformat
+        name: gdformat (Godot 3.6)
+        alias: gdformat-36
+        # args: [--check]   # check-only alternative
+        entry: pwsh -NoProfile -File hooks/pre-commit-gdtoolkit.ps1 -Tool gdformat -BranchRegex '^downpatch-3\.6\.0'
+        additional_dependencies: [setuptools<81]   # pkg_resources removed in v81+
+        files: ^godot_ap/.*\.gd$

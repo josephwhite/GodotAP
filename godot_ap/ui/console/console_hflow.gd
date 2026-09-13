@@ -1,13 +1,16 @@
 class_name ConsoleHFlow extends Container
 
+
 func _init():
 	add_constant_override("h_separation", 0)
 	add_constant_override("v_separation", 0)
+
 
 func _notification(what):
 	match what:
 		NOTIFICATION_SORT_CHILDREN:
 			_sort_flow()
+
 
 func _sort_flow():
 	var line_h = 0.0
@@ -32,6 +35,7 @@ func _sort_flow():
 	if not is_equal_approx(rect_min_size.y, total_h):
 		rect_min_size.y = total_h
 
+
 func add_text_split(main_label):
 	if main_label.text.find(" ") == -1:
 		add_child(main_label)
@@ -46,7 +50,8 @@ func add_text_split(main_label):
 		labels.append(d)
 		var spacing = Spacing.new(self, hspace)
 		labels.append(spacing)
-	if labels.size() == 0: return
+	if labels.size() == 0:
+		return
 	labels.pop_back()
 	for lbl in labels:
 		add_child(lbl)

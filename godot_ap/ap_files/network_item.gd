@@ -7,15 +7,22 @@ var dest_player_id
 var flags
 
 const _BC_state = {"ref": null}
+
+
 static func _get_ap():
 	return Util._get_ap()
+
+
 static func _get_bc():
 	if _BC_state.ref == null:
 		_BC_state.ref = Util._ap_load("ui/console/base_console.gd")
 	return _BC_state.ref
 
+
 func get_classification():
 	return _get_ap().get_item_classification(flags)
+
+
 static func from(json, recv):
 	if json["class"] != "NetworkItem":
 		return null
@@ -26,6 +33,8 @@ static func from(json, recv):
 	v.dest_player_id = _get_ap().conn.player_id if recv else json["player"]
 	v.flags = int(json["flags"])
 	return v
+
+
 static func from_hint(json):
 	if json["class"] != "Hint":
 		return null
@@ -37,14 +46,25 @@ static func from_hint(json):
 	v.flags = int(json["item_flags"])
 	return v
 
+
 func is_local():
 	return src_player_id == dest_player_id
+
+
 func is_prog():
 	return Util.has_flag(flags, 0)
 
+
 func get_name():
 	return _get_ap().conn.get_gamedata_for_player(dest_player_id).get_item_name(id)
+
+
 func _to_string():
-	return "ITEM(%d at %d,player %d->%d,flags %d)" % [id,loc_id,src_player_id,dest_player_id,flags]
+	return (
+		"ITEM(%d at %d,player %d->%d,flags %d)"
+		% [id, loc_id, src_player_id, dest_player_id, flags]
+	)
+
+
 func output():
 	return _get_bc().make_item(id, flags, _get_ap().conn.get_gamedata_for_player(dest_player_id))

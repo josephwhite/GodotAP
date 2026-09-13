@@ -4,6 +4,7 @@ export var major = 0
 export var minor = 0
 export var build = 0
 
+
 static func from(json):
 	if json["class"] != "Version":
 		return null
@@ -12,6 +13,8 @@ static func from(json):
 	v.minor = json["minor"]
 	v.build = json["build"]
 	return v
+
+
 static func val(v1, v2, v3):
 	var v = Util._ap_load("ap_files/version.gd").new()
 	v.major = v1
@@ -19,8 +22,10 @@ static func val(v1, v2, v3):
 	v.build = v3
 	return v
 
+
 func _to_string():
-	return "VER(%d.%d.%d)" % [major,minor,build]
+	return "VER(%d.%d.%d)" % [major, minor, build]
+
 
 func compare(other):
 	if major != other.major:
@@ -29,8 +34,10 @@ func compare(other):
 		return minor - other.minor
 	return build - other.build
 
+
 func _as_ap_dict():
-	return {"major":major,"minor":minor,"build":build,"class":"Version"}
+	return {"major": major, "minor": minor, "build": build, "class": "Version"}
+
 
 func _as_semver_dict():
-	return {"major":major,"minor":minor,"patch":build}
+	return {"major": major, "minor": minor, "patch": build}

@@ -5,6 +5,11 @@ export_presets.cfg
 # Godot 4+ specific ignores
 .godot/
 
+# Godot Unit Test (GUT)
+addons/gut/
+tests/results/*
+!tests/results/.gitkeep
+
 # Upstream ignores
 build/
 todo.txt

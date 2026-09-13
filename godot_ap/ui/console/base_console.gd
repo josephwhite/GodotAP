@@ -3,6 +3,8 @@ class_name BaseConsole extends Control
 export(NodePath) var scroll_cont
 export(NodePath) var parts_cont
 export var spacing = 0 setget set_spacing, get_spacing
+
+
 func set_spacing(val):
 	spacing = val
 	if not is_inside_tree():
@@ -12,6 +14,8 @@ func set_spacing(val):
 		pc = get_node(pc)
 	if pc:
 		pc.add_constant_override("separation", spacing)
+
+
 func get_spacing():
 	var pc = parts_cont
 	if pc is NodePath:
@@ -19,7 +23,10 @@ func get_spacing():
 	if not pc:
 		return spacing
 	return pc.get_constant("separation")
+
+
 export var scroll_to_bottom_on_new_message = false
+
 
 func pop_dropdown(target):
 	var popup = PopupPanel.new()
@@ -40,8 +47,10 @@ func pop_dropdown(target):
 	vbox.set_anchors_preset(Control.PRESET_FULL_RECT)
 	return vbox
 
+
 func add(part):
-	if not part: return
+	if not part:
+		return
 	part.connect("tree_entered", self, "_on_new_message", [part])
 	var pc = parts_cont
 	if pc is NodePath:
@@ -51,22 +60,28 @@ func add(part):
 	update()
 	return part
 
+
 static func _get_ap():
 	return Util._get_ap()
 
+
 static func make_text(text, ttip = "", col = null):
-	if col == null: col = APColors.ComplexColor.NIL
+	if col == null:
+		col = APColors.ComplexColor.NIL
 	return ConsoleLabel.make_col(text, col, ttip)
+
 
 static func make_c_text(text, ttip = "", col = null):
 	var part = make_text(text, ttip, col)
 	part.align = HALIGN_CENTER
 	return part
 
+
 static func make_spacing(space):
 	var part = Control.new()
 	part.rect_min_size = space
 	return part
+
 
 func get_line_height():
 	var fonts = []
@@ -78,14 +93,19 @@ func get_line_height():
 		fonts.append(clf.bold_italic_font)
 	var h = 0.0
 	for f in fonts:
-		h = max(h,f.get_height())
+		h = max(h, f.get_height())
 	return h
+
+
 func make_header_spacing(vspace = -0.5):
 	if vspace < 0:
 		vspace = get_line_height() * abs(vspace)
-	return make_spacing(Vector2(0,vspace))
+	return make_spacing(Vector2(0, vspace))
+
+
 func add_header_spacing(vspace = -0.5):
 	return add(make_header_spacing(vspace))
+
 
 static func make_indent(indent):
 	var part = MarginContainer.new()
@@ -94,6 +114,7 @@ static func make_indent(indent):
 	part.add_constant_override("margin_top", 0)
 	part.add_constant_override("margin_bottom", 0)
 	return part
+
 
 static func make_indented_block(s, indent):
 	var root = VBoxContainer.new()
@@ -119,27 +140,40 @@ static func make_indented_block(s, indent):
 		container.add_child(make_text(line, ""))
 	return root
 
+
 static func make_location(id, data):
-	return make_text(data.get_loc_name(id), "", APColors.ComplexColor.as_special(APColors.SpecialColor.LOCATION))
+	return make_text(
+		data.get_loc_name(id), "", APColors.ComplexColor.as_special(APColors.SpecialColor.LOCATION)
+	)
+
+
 static func make_item(id, flags, data):
 	var ttip = "Type: %s" % _get_ap().get_item_classification(flags)
 	var color = APColors.ComplexColor.as_special(_get_ap().get_item_class_color(flags))
 	return make_text(data.get_item_name(id), ttip, color)
+
 
 static func make_player(id):
 	var player = _get_ap().conn.get_player(id)
 	var ttip = "Game: %s" % _get_ap().conn.get_slot(id).game
 	if not player.alias.empty():
 		ttip += "\nSlot: %s" % player.name
-	var color = (APColors.SpecialColor.OWN_PLAYER if id == _get_ap().conn.player_id else
-		APColors.SpecialColor.ANY_PLAYER)
+	var color = (
+		APColors.SpecialColor.OWN_PLAYER
+		if id == _get_ap().conn.player_id
+		else APColors.SpecialColor.ANY_PLAYER
+	)
 	return make_text(player.name, ttip, APColors.ComplexColor.as_special(color))
 
+
 static func make_foldable(text, ttip = "", color = null):
-	if color == null: color = APColors.ComplexColor.NIL
+	if color == null:
+		color = APColors.ComplexColor.NIL
 	return ConsoleFoldableContainer.make(text, ttip, color)
 
+
 var is_max_scroll = false
+
 
 func _ready():
 	set_spacing(spacing)
@@ -152,9 +186,11 @@ func _ready():
 		v.italic = true
 		return
 
+
 func _on_new_message(_node):
 	if scroll_to_bottom_on_new_message:
 		scroll_bottom()
+
 
 func _notification(what):
 	match what:
@@ -162,33 +198,46 @@ func _notification(what):
 			update()
 			var clf = ConsoleLabel.get_console_label_fonts()
 			if not clf:
-				ConsoleLabel.set_console_label_fonts(FontStorage.new(get_font("font", "ConsoleLabel")))
+				ConsoleLabel.set_console_label_fonts(
+					FontStorage.new(get_font("font", "ConsoleLabel"))
+				)
 			else:
 				clf.populate(get_font("font", "ConsoleLabel"))
+
+
 func _get_mouse_pos():
 	return get_viewport().get_mouse_position() - rect_global_position + Util.MOUSE_OFFSET
+
 
 func scroll_bottom():
 	var sc = scroll_cont
 	if sc is NodePath:
 		sc = get_node(sc)
-	if not sc: return
+	if not sc:
+		return
 	var bar = sc.get_v_scrollbar()
 	bar.value = bar.max_value
+
+
 func scroll_top():
 	var sc = scroll_cont
 	if sc is NodePath:
 		sc = get_node(sc)
 	if sc:
 		sc.scroll_vertical = 0
+
+
 func scroll_by_abs(amnt):
 	var sc = scroll_cont
 	if sc is NodePath:
 		sc = get_node(sc)
 	if sc:
 		sc.scroll_vertical += round(amnt)
+
+
 func _gui_input(event):
-	if Engine.is_editor_hint(): return
+	if Engine.is_editor_hint():
+		return
 	if event is InputEventKey:
 		if event.pressed:
 			match event.scancode:
@@ -208,9 +257,11 @@ func _gui_input(event):
 					return
 			accept_event()
 
+
 func queue_locked_redraw():
 	is_max_scroll = false
 	update()
+
 
 func _resize_popup(target, popup, vbox):
 	var hb = target.get_rect()
@@ -229,17 +280,24 @@ func _resize_popup(target, popup, vbox):
 		if popup.rect_position.x + popup.rect_size.x > get_tree().get_root().size.x:
 			var diff2 = (popup.rect_position.x + popup.rect_size.x) - get_tree().get_root().size.x
 			popup.rect_position.x = max(0, popup.rect_position.x - diff2)
-	if not popup.visible: popup.visible = true
+	if not popup.visible:
+		popup.visible = true
+
+
 func _on_popup_tree_exiting(target, _popup, _vbox):
 	if target.resized.is_connected(self, "_resize_popup"):
 		target.resized.disconnect(self, "_resize_popup")
+
+
 func close():
-	if Engine.is_editor_hint(): return
+	if Engine.is_editor_hint():
+		return
 	var p = self
 	while p and not p is ConsoleWindowContainer:
 		p = p.get_parent()
 	if p:
 		p.close()
+
 
 func clear():
 	var pc = parts_cont
@@ -250,6 +308,7 @@ func clear():
 			part.queue_free()
 	update()
 
+
 func printjson_command(json):
 	var s = ""
 	var output_data = false
@@ -258,7 +317,7 @@ func printjson_command(json):
 	var flowbox = ConsoleHFlow.new()
 	match json.get("type"):
 		"Chat":
-			var msg = json.get("message","")
+			var msg = json.get("message", "")
 			var name_part = _get_ap().conn.get_player(json["slot"]).output()
 			name_part.text += ": "
 			var name_str = name_part.text
@@ -305,7 +364,8 @@ func printjson_command(json):
 				elem["text"] = spl[1]
 				s += printjson_out([elem], flowbox)
 				s += printjson_out(data, flowbox)
-			else: output_data = true
+			else:
+				output_data = true
 		_:
 			output_data = true
 	if flowbox.get_child_count() > 0:
@@ -314,7 +374,8 @@ func printjson_command(json):
 	if pre_space and output_data:
 		add_header_spacing()
 	if output_data:
-		if not flowbox: flowbox = ConsoleHFlow.new()
+		if not flowbox:
+			flowbox = ConsoleHFlow.new()
 		s += printjson_out(json["data"], flowbox)
 		add(flowbox)
 	if post_space and output_data:
@@ -337,13 +398,29 @@ func printjson_out(elems, flowbox):
 
 				part = make_text(txt, stat_name, APColors.ComplexColor.as_rich(color))
 			"player_name":
-				part = make_text(txt, "Arbitrary Player Name", APColors.ComplexColor.as_special(APColors.SpecialColor.ANY_PLAYER))
+				part = make_text(
+					txt,
+					"Arbitrary Player Name",
+					APColors.ComplexColor.as_special(APColors.SpecialColor.ANY_PLAYER)
+				)
 			"item_name":
-				part = make_text(txt, "Arbitrary Item Name", APColors.ComplexColor.as_special(APColors.SpecialColor.ITEM))
+				part = make_text(
+					txt,
+					"Arbitrary Item Name",
+					APColors.ComplexColor.as_special(APColors.SpecialColor.ITEM)
+				)
 			"location_name":
-				part = make_text(txt, "Arbitrary Location Name", APColors.ComplexColor.as_special(APColors.SpecialColor.LOCATION))
+				part = make_text(
+					txt,
+					"Arbitrary Location Name",
+					APColors.ComplexColor.as_special(APColors.SpecialColor.LOCATION)
+				)
 			"entrance_name":
-				part = make_text(txt, "Arbitrary Entrance Name", APColors.ComplexColor.as_special(APColors.SpecialColor.LOCATION))
+				part = make_text(
+					txt,
+					"Arbitrary Entrance Name",
+					APColors.ComplexColor.as_special(APColors.SpecialColor.LOCATION)
+				)
 			"player_id":
 				var plyr_id = int(txt)
 				part = _get_ap().conn.get_player(plyr_id).output()
@@ -363,18 +440,19 @@ func printjson_out(elems, flowbox):
 			"color":
 				part = make_text(txt)
 				var col_str = elem["color"]
-				if col_str.ends_with("_bg"): # no handling for bg colors, just convert to fg
-					col_str = col_str.substr(0,col_str.length()-3)
+				if col_str.ends_with("_bg"):  # no handling for bg colors, just convert to fg
+					col_str = col_str.substr(0, col_str.length() - 3)
 				match col_str:
 					"bold":
 						part.bold = true
 					"underline":
-						pass #part.underline = true
+						pass  #part.underline = true
 					_:
 						part.color = APColors.color_from_name(part, col_str, part.color)
 		s += part.text
 		flowbox.add_text_split(part)
 	return s
+
 
 static func printjson_out_str(elems):
 	var s = ""
@@ -400,10 +478,10 @@ static func printjson_out_str(elems):
 		s += txt
 	return s
 
+
 static func printjson_str(elems):
 	var s = ""
 	for elem in elems:
 		var txt = elem["text"]
 		s += txt
 	return s
-

@@ -21,13 +21,10 @@ A file for [guiding coding agents](https://agents.md/).
     - Upstream: https://github.com/EmilyV99/GodotAP
     - If an upstream feature can't be reasonably reimplemented due to Godot 3.6 limitation, drop it.
 
-## Downpatch Reference (Godot 4 → 3.6)
-
-[Full generic downpatch reference](docs/DOWNPATCH.md).
+## Code Style
+Follow Godot's GDScript style guide for all GDScript code (pin the Godot 3.6 docs, not 4.x).
 
 ## GodotAP-Specific Fixes & Lessons
-
-This section is repo-specific application/integration notes of the DOWNPATCH rules.
 
 ### WebSocket Refactor
 
@@ -79,8 +76,32 @@ func _process(delta):
 - Retries paced by one-shot `SceneTreeTimer(0.25 * _connect_attempts)` → `_retry_dial()` (no-op unless still-`SOCKET_CONNECTING`); scheme flips + cycle counting live in shared `_advance_retry()`, used by both the error-event path and instant `connect_to_url` failures so every loop terminates at the cap.
 - `_on_ws_closed`: already-`DISCONNECTED` status = no-op — late close events after give-up must not trigger the accidental-reconnect branch.
 
+### GDScript
+- `exp` is a reserved word in Godot 3.6 GDScript — `var exp = …` fails parse with `Expected an identifier for the local variable name`. Use `expected`/`e`.
+- `Color("#rrggbbaa")` parses 8-digit hex as **ARGB** in 3.6 but **RGBA** in Godot 4 — don't assume hex colors round-trip through `Color()` / `Color.to_html()`. 3.6 ports must parse 8-digit hex manually to match Godot 4 (reference-client) semantics.
+
 ## Tools
+- pwsh
 - [`pre-commit`](\.pre-commit-config.yaml)
+
+### Setup pre-commit
+
+```bash
+pip install pre-commit
+pre-commit install
+pre-commit install-hooks    # pre-build the gdtoolkit 3.6.0 + 4.5.0 envs
+pre-commit run
+```
+
+### Run tests (GUT)
+
+```bash
+# Headless on Godot 3.6
+godot --no-window --path . -s addons/gut/gut_cmdln.gd -gexit
+```
+
+- **GUT version: 7.4.3** (Godot 3.x)
+- Suites under `tests/` (`.gutconfig.json` drive discovery). `tests/` is outside the gdtoolkit hooks (they match `^godot_ap/.*\.gd$`).
 
 ## References
 
@@ -89,8 +110,10 @@ func _process(delta):
 - [GodotAP Upstream (Godot 4)](https://github.com/EmilyV99/GodotAP)
 ### Godot
 - [Godot 3.6 Docs](https://docs.godotengine.org/en/3.6)
+    - [GDScript Style Guide](https://docs.godotengine.org/en/3.6/tutorials/scripting/gdscript/gdscript_styleguide.html)
 - [Godot 3.6 Source Code](https://github.com/godotengine/godot/tree/3.6)
+- [Our full generic downpatch reference](docs/DOWNPATCH.md)
 ### Godot Addons/Libs
-- [GUT — Godot Unit Test](https://github.com/bitwes/Gut)
+- [GUT: Godot Unit Test](https://github.com/bitwes/Gut)
 ### Archipelago
 - [Archipelago Network Protocol](https://github.com/ArchipelagoMW/Archipelago/blob/main/docs/network%20protocol.md)
