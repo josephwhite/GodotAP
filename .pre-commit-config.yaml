@@ -7,7 +7,8 @@ repos:
   - repo: local
     hooks:
       - id: relativize-ext-resources
-        name: Relativize godot_ap ext_resource paths (Godot 3.6)
+        name: Relativize paths (Godot 3.6)
+        description: Relativize godot_ap ext_resource paths (Godot 3.6).
         entry: pwsh -NoProfile -File hooks/pre-commit-relativize.ps1 -BranchRegex '^downpatch-3\.6\.0'
         language: system
         types: [text]
@@ -18,15 +19,16 @@ repos:
     rev: 3.6.0
     hooks:
       - id: gdlint
-        name: gdlint (Godot 3.6)
         alias: gdlint-36
+        name: gdlint (Godot 3.6)
+        description: Lint GDScript files (Godot 3.6).
         entry: pwsh -NoProfile -File hooks/pre-commit-gdtoolkit.ps1 -Tool gdlint -BranchRegex '^downpatch-3\.6\.0'
         additional_dependencies: [setuptools<81]   # pkg_resources removed in v81+
-        files: ^godot_ap/.*\.gd$
+        files: \.gd$
       - id: gdformat
-        name: gdformat (Godot 3.6)
         alias: gdformat-36
-        # args: [--check]   # check-only alternative
+        name: gdformat (Godot 3.6)
+        description: Format GDScript files (Godot 3.6).
         entry: pwsh -NoProfile -File hooks/pre-commit-gdtoolkit.ps1 -Tool gdformat -BranchRegex '^downpatch-3\.6\.0'
         additional_dependencies: [setuptools<81]   # pkg_resources removed in v81+
-        files: ^godot_ap/.*\.gd$
+        files: \.gd$

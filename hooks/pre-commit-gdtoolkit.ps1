@@ -3,6 +3,7 @@
     Pre-commit for gdtoolkit hooks.
     .DESCRIPTION
     Runs the named gdtoolkit tool (gdlint/gdformat).
+    Only processes GDScript files (*.gd) files.
     BranchRegex makes it run only on branches that match. Skip inverts that to skip branches that match.
     When neither is given, runs on every branch.
     .PARAMETER Tool
@@ -19,6 +20,9 @@
     .EXAMPLE
     pwsh -NoProfile -File hooks/pre-commit-gdtoolkit.ps1 -Tool gdlint -BranchRegex '^downpatch-3\.6\.0' godot_ap/foo.gd
     Runs gdlint on the given files only on downpatch-3.6.0* branches.
+    .EXAMPLE
+    pwsh -NoProfile -File hooks/pre-commit-gdtoolkit.ps1 -Tool gdlint godot_ap/foo.gd tests/unit/test_foo.gd
+    Runs gdlint on given files on any branch.
     .EXAMPLE
     pwsh -NoProfile -File hooks/pre-commit-gdtoolkit.ps1 -Tool gdlint -BranchRegex '^downpatch-3\.6\.0' -Skip godot_ap/foo.gd
     Runs gdlint on the given files on every branch except downpatch-3.6.0*.
@@ -37,9 +41,8 @@ param(
     [string[]]$Files
 )
 
-# A positional filename can spill into -BranchRegex when the switch is
-# omitted (PowerShell binds positionals in declaration order). 
-# Regexes are anchored like '^downpatch-3\.6\.0', never a real path, so demote:
+# A positional filename can spill into -BranchRegex when the switch is omitted (PowerShell binds positionals in declaration order). 
+# Regexes are anchored like '^downpatch-3\.6\.0', never a real path, so demote.
 if ($BranchRegex -and (Test-Path -LiteralPath $BranchRegex)) {
     if ($Files) { 
         $Files = @($BranchRegex) + $Files 
