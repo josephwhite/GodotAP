@@ -37,7 +37,7 @@ static func _get_status_colors():
 
 
 var item
-var entrance
+var entrance: String
 var status = Status.NOT_FOUND
 
 
@@ -82,6 +82,7 @@ static func update_hint_status(targ_status, part):
 	part.rich_color = _get_status_colors().get(targ_status, APColors.RichColor.RED)
 
 
+## Create a plain text description of this hint.
 func as_plain_string():
 	return (
 		"%s %s '%s' (%s) for %s at '%s'"

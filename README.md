@@ -7,10 +7,13 @@ A Godot 3.6 port of [GodotAP](https://github.com/EmilyV99/GodotAP) for inegratin
 - Preloads and ext_resource references are folder-relative
     - Allows `godot_ap/` folder installs at any depth (`res://godot_ap/`, `res://addons/godot_ap/`, `res://mods-unpacked/<ModID>/godot_ap/` etc.).
     - See [upstream's equivalent PR](https://github.com/EmilyV99/GodotAP/pull/16).
-- Casus: A generic set of toggles to handle [quirks by game/engine builds](./docs/ENGINE_ODDITIES.md).
+- A few more exports for `archipelago.gd`.
+  - `casus`: A generic set of toggles to handle [quirks by game/engine builds](./docs/ENGINE_ODDITIES.md).
+  - `AP_VALIDATE_LOCATION_CHECKS`: Validates location ids for slot in server sends.
 
 ## CommonClient / Built in Support
-Just like upstream, this version of GodotAP also works for custom games with bultin in Archipelago support or a text client. See the [upstream readme for more info](docs\UPSTREAM_README.md).
+Just like upstream, this version of GodotAP also works for custom games with bultin in Archipelago support or a text client.
+See the [upstream readme for more info](docs\UPSTREAM_README.md).
 
 ## In a Godot Mod Loader mod
 

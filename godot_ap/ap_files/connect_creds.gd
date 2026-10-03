@@ -1,9 +1,10 @@
 class_name APCredentials extends Node
+## Credentials for connecting to an Archipelago room.
 
 signal updated(creds)
 
-var ip = "archipelago.gg"
-var port = "" setget , get_port
+var ip: String = "archipelago.gg"
+var port: String = "" setget , get_port
 
 
 func get_port():
@@ -12,8 +13,8 @@ func get_port():
 	return port
 
 
-var slot = ""
-var pwd = ""
+var slot: String = ""
+var pwd: String = ""
 
 
 func read(file):

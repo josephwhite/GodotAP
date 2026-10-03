@@ -215,6 +215,10 @@ func slide_to(open):
 
 Also affects `_ready()`-time initialization (`is_open = true` must become `set_is_open(true)`). Grep for assignments to `setget` vars inside the declaring script and check each one intentionally calls the setter.
 
+**Seen in GodotAP:**
+- `godot_ap/autoloads/archipelago.gd` (`status`) — every internal write must call `_set_status(APStatus.X)` so `status_updated` fires, `conn` is nulled, and the reconnect queue is handled on `DISCONNECTED`. Grep: `rg 'status\s*=\s*APStatus'`.
+- `godot_ap/autoloads/archipelago.gd` (`output_console`) — the setter must also sync the member var itself (~25 internal reads bypass the getter); internal writes in `_init_console()`/`close_console()` must call `set_output_console()` explicitly.
+
 #### `export var` Requires Default Value
 Bare `export var x` errors: `"Type-less export needs a constant expression assigned to infer type."`
 
@@ -884,8 +888,8 @@ Works in 3.6 (since 3.1).
 | `arr.assign(values)` | `arr.clear(); for v in values: arr.append(v)` |
 | `arr.make_read_only()` | wrap in class with getter returning `arr.duplicate()` or make `const` if static |
 | `arr.reverse()` / `arr.reversed()` | `arr.invert()` / `Util.reversed(arr)` (existing helper) |
-| `arr.is_empty()` / `dict.is_empty()` | `empty()` — rename, not a removal |
-| `dict.find_key(v)` | manual iteration: `for k in dict: if dict[k] == v: return k` |
+| `arr.is_empty()` / `dict.is_empty()` | `empty()` / `size() == 0` |
+| `dict.find_key(v)` | `for k in dict: if dict[k] == v: return k` |
 | `dict.map` / `dict.filter` (4.x only) | manual loop |
 | `str.validate_filename()` | manual sanitization needed (String-only stray, kept here for legacy) |
 
@@ -1041,4 +1045,4 @@ Available in 3.6 ✓
     - [Godot 3.6 Array class](https://docs.godotengine.org/en/3.6/classes/class_array.html)
 - [Godot 3.6 Source Code](https://github.com/godotengine/godot/tree/3.6)
     - C++ citations in this doc reference tag `3.6-stable` (commit `de2f0f147`)
-
+    - Keywords defined in [GDScript tokenizer](https://github.com/godotengine/godot/blob/3.6/modules/gdscript/gdscript_tokenizer.cpp)

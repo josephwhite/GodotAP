@@ -1,8 +1,10 @@
 class_name APConfigManager extends Node
 
 signal config_changed
+
 const CFG_VERSION = 2
 const CONFIG_HEADER = "GodotAP Settings File"
+const _HEX_CHARS = "0123456789abcdef"
 
 var _pause_saving = false
 var window_theme_path = "" setget set_window_theme_path
@@ -29,31 +31,28 @@ static func _randi_range(min_val, max_val):
 	return min_val + randi() % (max_val - min_val + 1)
 
 
-const _HEX_CHARS = "0123456789abcdef"
-
-
 static func _rand_hex():
 	return _HEX_CHARS.substr(_randi_range(0, 15), 1)
 
 
 ## Generate a version 4 UUID.
-static func generate_uuid():
+static func generate_uuid() -> String:
 	var ret = ""
-	for q in range(8):
+	for _q in range(8):
 		ret += _rand_hex()
 	ret += "-"
-	for q in range(4):
+	for _q in range(4):
 		ret += _rand_hex()
 	ret += "-"
 	ret += "4"
-	for q in range(3):
+	for _q in range(3):
 		ret += _rand_hex()
 	ret += "-"
 	ret += _HEX_CHARS.substr(_randi_range(8, 11), 1)
-	for q in range(3):
+	for _q in range(3):
 		ret += _rand_hex()
 	ret += "-"
-	for q in range(12):
+	for _q in range(12):
 		ret += _rand_hex()
 	return ret
 

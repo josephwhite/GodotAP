@@ -3,9 +3,10 @@ disable:
 - private-method-call
 class-variable-name: '([A-Z][A-Z0-9]*(_[A-Z0-9]+)*|_*[a-zA-Z][a-zA-Z0-9]*(_[a-zA-Z0-9]+)*)'
 constant-name: '([A-Z][A-Z0-9]*(_[A-Z0-9]+)*|_?[a-zA-Z][a-zA-Z0-9]*(_[a-zA-Z0-9]+)*)'
+excluded_directories: [".git", "addons"]
 function-argument-name: '_?[a-z][a-z0-9]*(_[a-z0-9]+)*_?'
 function-variable-name: '_?[a-z][a-z0-9]*(_[a-z0-9]+)*'
 max-file-lines: 2000
-max-line-length: 120
+max-line-length: 140
 max-public-methods: 60
 signal-name: '_?[a-z][a-z0-9]*(_[a-z0-9]+)*'

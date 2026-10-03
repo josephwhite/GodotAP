@@ -1,23 +1,28 @@
 class_name ConsoleCommand
+## Information about a console command.
 
+## How deep the indentation is for help text display on the console.
 const HELPTEXT_INDENT = 20
 
 
+## Contains the help text for the usage of a command.
 class CmdHelpText:
-	var args = ""
-	var text = ""
+	## The arguments the command takes, to be displayed to the user.
+	var args: String = ""
+	## A description of the command and the uses of the variables.
+	var text: String = ""
 	var cond_target
 	var cond_method
 
 
-var text = ""
+var text: String = ""
 var help_text = []
 var call_target = null
 var call_method = ""
 var autofill_proc = null
 var disabled_targets = []
 var disabled_methods = []
-var _debug = false
+var _debug: bool = false
 
 
 #region Constructor and builder-pattern funcs
@@ -57,6 +62,7 @@ func add_disable(target, method):
 	return self
 
 
+## Enable or disable debug-only status for this command.
 func debug(state = true):
 	_debug = state
 	return self
@@ -65,6 +71,7 @@ func debug(state = true):
 #endregion
 
 
+## Returns [code]true[/code] if the command is debug-only.
 func is_debug():
 	return _debug
 
@@ -75,6 +82,7 @@ func _is_cond_enabled(ht):
 	return not ht.cond_target.call(ht.cond_method)
 
 
+## Get all the help text for this command.
 func get_helptext():
 	var s = ""
 	for ht in help_text:

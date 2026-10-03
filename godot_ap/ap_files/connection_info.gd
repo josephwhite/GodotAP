@@ -27,16 +27,23 @@ static func _get_ni():
 
 # Variables / data
 
-var serv_version  ## The server's Archipelago version
-var gen_version  ## The generator's Archipelago version
-var seed_name  ## The seed_name received from the server
+## The server's Archipelago version
+var serv_version
+## The generator's Archipelago version
+var gen_version
+## The seed_name received from the server
+var seed_name: String
 
-var player_id  ## The ID of your player
-var team_id  ## The ID of your team (unimplemented)
-var slot_data  ## The slot_data from the server
-
-var players = []  ## The players in this Multiworld
-var slots = []  ## The slots in this Multiworld
+## The ID of your player
+var player_id: int
+## The ID of your team (unimplemented)
+var team_id: int
+## The slot_data from the server
+var slot_data
+## The players in this Multiworld
+var players = []
+## The slots in this Multiworld
+var slots = []
 
 ## The checked status of the locations for this slot, by location ID.
 var slot_locations = {}
@@ -129,7 +136,7 @@ func get_loc_by_name(loc_name):
 	return locs_by_name.get(loc_name, APLocation.nil())
 
 
-# Loads (or reloads) all locations from the datapackage.
+## Loads (or reloads) all locations from the datapackage.
 func _load_locations():
 	locations.clear()
 	locs_by_name.clear()
@@ -168,7 +175,7 @@ signal all_scout_cached
 # Outgoing server packets
 var _notified_keys = {}
 var _setreply_callbacks = {}
-var _hint_listening = false
+var _hint_listening: bool = false
 
 
 ## Tell the server to send us information about the hints for this slot.
@@ -256,6 +263,15 @@ var _scout_queue = {}
 func scout(location, create_as_hint, proc):
 	var item = _scout_cache.get(location)
 	if create_as_hint or not item:  # Always send if `create_as_hint`!
+		# Validate if location exists for slot.
+		if _get_ap().AP_VALIDATE_LOCATION_CHECKS and not slot_locations.has(int(location)):
+			_get_ap().warn(
+				(
+					"Location %s is not a valid location for this slot. Refusing to scout (It may be excluded by player settings)."
+					% [location]
+				)
+			)
+			return
 		_get_ap().send_command(
 			"LocationScouts", {"locations": [location], "create_as_hint": create_as_hint}
 		)
@@ -282,7 +298,8 @@ func _on_locinfo(json):
 		emit_signal("all_scout_cached")
 
 
-func force_scout_all():  ## Scouts every location into the local cache
+## Scouts every location into the local cache
+func force_scout_all():
 	_get_ap().send_command(
 		"LocationScouts", {"locations": slot_locations.keys(), "create_as_hint": 0}
 	)
@@ -303,7 +320,7 @@ func send_bounce(data, target_games, target_slots, target_tags):
 	_get_ap().send_command("Bounce", cmd)
 
 
-## Sends a `Bounce` packet designed for the `DeathLink` feature
+## Sends a `Bounce` packet designed for the `DeathLink` feature.
 ## Requires `DeathLink` being enabled (see 'Archipelago.set_deathlink()')
 ## Only players in the same DeathLink group will be killed.
 func send_deathlink(cause = ""):

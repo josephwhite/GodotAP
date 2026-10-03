@@ -1,7 +1,11 @@
 class_name APLocation
+## A multiworld location.
 
-var id
-var name
+## The location's ID.
+var id: int
+## The location's name.
+var name: String
+## Priority of the location as given by a hint.
 var hint_status
 
 
@@ -12,6 +16,7 @@ static func make(locid):
 	return ret
 
 
+## Create empty and invalid location.
 static func nil():
 	var ret = Util._ap_load("ap_files/ap_location.gd").new()
 	ret.id = -9999

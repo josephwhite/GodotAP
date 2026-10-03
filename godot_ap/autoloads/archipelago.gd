@@ -44,11 +44,12 @@ export(int, 5, 500, 1) var websocket_inbuffer_mb = 50
 ## All default to `false` (stock Godot 3.6 behavior).
 ## Each key makes the library defer to a non-native-crash implementation of a
 ## construct a custom engine build cannot execute (see docs/ENGINE_ODDITIES.md).
-## `DISABLE_BITWISE_OPERATIONS` routes all bit-flag math through `Util.has_flag()`/pow()-based helpers.
-## Keys are read via `Util._casus()`, set them before connecting.
 export var casus = {
 	"DISABLE_BITWISE_OPERATIONS": false,
 }
+## Validates location ids for slot in server commands.
+## Disable to skip validation; useful for performance in already validated large-batch sends.
+export var AP_VALIDATE_LOCATION_CHECKS = true
 
 onready var hang_clock = $HangTimer
 
@@ -77,8 +78,11 @@ signal connected(conn, json)
 signal printjson(json, plaintext)
 ## Emitted when the connection is lost
 signal disconnected
+
 #endregion
+
 #region Other signals
+
 ## Signals when 'status' changes
 signal status_updated
 ## Signals when all required datapacks have finished loading
@@ -92,6 +96,7 @@ signal on_attach_console
 
 # Debug purposes
 signal _logged_message(msg)
+
 #endregion
 
 ## The Archipelago item handling values.
@@ -103,13 +108,16 @@ enum ItemHandling {
 	ALL = 7,  ## Receive your items from your starting inventory, your world, and other worlds from the server.
 }
 
-## Timestamp of the last sent DeathLink packet. Automatically updated by 'ConnectionInfo.send_deathlink'.
-var last_sent_deathlink_time
-## Timestamp of the last sent TrapLink packet. Automatically updated by 'ConnectionInfo.send_traplink'.
-var last_sent_traplink_time
+## Timestamp of the last sent DeathLink packet.
+## Automatically updated by 'ConnectionInfo.send_deathlink'.
+var last_sent_deathlink_time = 0.0
+
+## Timestamp of the last sent TrapLink packet.
+## Automatically updated by 'ConnectionInfo.send_traplink'.
+var last_sent_traplink_time = 0.0
 
 ## The group that is used for DeathLink for this connection
-var deathlink_group setget set_deathlink_group, get_deathlink_group
+var deathlink_group = "" setget set_deathlink_group, get_deathlink_group
 
 ## The current connection credentials to be used
 var creds = null
@@ -217,19 +225,21 @@ func ap_reconnect():
 		_wss = not _wss
 		if _wss:
 			_connect_attempts += 1
-	_start_connect_watchdog()  # Covers both sync-fail and async-ok; error path still arms a give-up
+	# Covers both sync-fail and async-ok; error path still arms a give-up
+	_start_connect_watchdog()
 
 
-## Connect to Archipelago with the specified connection information
+## Connect to Archipelago server with the specified connection information.
 func ap_connect(room_ip, room_port, slot_name, room_pwd = ""):
 	if status != APStatus.DISCONNECTED:
-		ap_disconnect()  # Do it here so the ip/port/slot are correct in the disconnect message
+		# Disconnect here so the ip/port/slot are correct in the message
+		ap_disconnect()
 	open_logger()
 	creds.update(room_ip, room_port, slot_name, room_pwd)
 	ap_reconnect()
 
 
-## Disconnect from Archipelago
+## Disconnect from Archipelago server.
 func ap_disconnect():
 	if _connecting_part:
 		_connecting_part = null
@@ -505,7 +515,8 @@ func send_packet(obj):
 	_socket.get_peer(1).put_packet(s.to_utf8())
 
 
-func _handle_command(json):  # Handle an incoming packet from the server
+## Handle an incoming packet from the server
+func _handle_command(json):
 	var command = json["cmd"]
 	comm_log("RECV", str(json))
 	match command:
@@ -679,14 +690,18 @@ func _handle_command(json):  # Handle an incoming packet from the server
 
 
 #region DATAPACKS
-var _datapack_cache = {}  # Local cache of DataPackages used when connecting
-var _datapack_pending = []  # List of DataPackages that are still being waited for
+
+## Local cache of DataPackages used when connecting
+var _datapack_cache = {}
+## List of DataPackages that are still being waited for
+var _datapack_pending = []
 
 
-## For each game (key) in the checksums dictionary, requests an update for its datapackage
-## if the locally stored checksum does not match the given value
+## For each game (key) in the [param checksums] dictionary, requests an update for its datapackage
+## if the locally stored checksum does not match the given value.
 func handle_datapackage_checksums(checksums):
-	Util._make_dir_recursive("user://ap/datapacks/")  # Ensure the directory exists, for later
+	# Ensure the directory exists
+	Util._make_dir_recursive("user://ap/datapacks/")
 	var cachefile = Util._file_open("user://ap/datapacks/cache.dat", File.READ)
 	if cachefile:
 		var loaded = cachefile.get_var()
@@ -709,7 +724,7 @@ func handle_datapackage_checksums(checksums):
 		_datapack_pending.append(game)
 
 
-# Caches and stores to disk `data` as the DataCache file for `game`
+## Caches and stores to disk `data` as the DataCache file for `game`
 func _handle_datapack(game, data):
 	var data_file = Util._file_open("user://ap/datapacks/%s.json" % game, File.WRITE)
 	_datapack_cache[game] = {
@@ -754,7 +769,8 @@ func _cache_datapacks():
 	cachefile.close()
 
 
-const _data_caches = {}  # DataPackage objects for each game
+## DataPackage objects for each game
+const _data_caches = {}
 
 
 ## Returns a DataCache for the specified game. If it cannot be found, returns an
@@ -777,8 +793,9 @@ static func get_datacache(game):
 
 #endregion DATAPACKS
 
-
 #region ITEMS
+
+
 func _receive_item(index, item):
 	assert(item.dest_player_id == conn.player_id)
 	if conn._received_index(index):
@@ -854,8 +871,10 @@ func _receive_item(index, item):
 
 #endregion ITEMS
 
-
 #region LOCATIONS
+
+
+## Send a signal to remove a location from the world.
 func _remove_loc(loc_id):
 	var lid = int(loc_id)
 	if conn and not conn.slot_locations.get(lid, false):
@@ -880,41 +899,84 @@ func on_removed(loc_name, proc):
 
 
 ## Call when a single location is collected and needs to be sent to the server.
+## Returns true if the location was sent.
 func collect_location(loc_id):
 	if _is_nongame_client:
-		return
-	_printout_recieved_items = false
+		return false
 	var lid = int(loc_id)
+	if not conn:
+		warn("No active connection. Refusing to send location %d." % lid)
+		return false
+	# Validate if location exists for slot.
+	if AP_VALIDATE_LOCATION_CHECKS and not location_exists(lid):
+		warn(
+			(
+				"Location %d is not a valid location for this slot. Refusing to send (It may be excluded by player settings)."
+				% [lid]
+			)
+		)
+		return false
+	_printout_recieved_items = false
 	send_command("LocationChecks", {"locations": [lid]})
 	_remove_loc(lid)
+	return true
 
 
 ## Call when multiple locations are collected and need to be sent to the server at once.
+## Locations that are not valid for this slot are skipped with a warning.
+## Returns the number of locations actually sent.
 func collect_locations(locs):
 	if _is_nongame_client:
-		return
-	if locs.size() == 0:
-		return
+		return 0
+	if not conn:
+		warn("No active connection. Refusing to send locations.")
+		return 0
+	# Validate if locations exists for slot.
+	var to_send = []
+	if AP_VALIDATE_LOCATION_CHECKS:
+		for loc_id in locs:
+			var lid = int(loc_id)
+			if location_exists(lid):
+				to_send.append(lid)
+			else:
+				warn(
+					(
+						"Location %d is not a valid location for this slot. Skipping (It may be excluded by player settings)."
+						% [lid]
+					)
+				)
+	else:
+		to_send = locs.duplicate()
+	if to_send.size() == 0:
+		return 0
 	_printout_recieved_items = false
-	send_command("LocationChecks", {"locations": locs})
-	for loc_id in locs:
+	send_command("LocationChecks", {"locations": to_send})
+	for loc_id in to_send:
 		_remove_loc(loc_id)
+	return to_send.size()
 
 
 ## Returns if the location exists in the slot or not.
 func location_exists(loc_id):
+	if not conn:
+		return false
 	var lid = int(loc_id)
 	return conn.slot_locations.has(lid)
 
 
-## Returns if the location was checked or not. `def` is returned if the location does not exist in the slot.
+## Returns if the location was checked or not.
+## `def` is returned if the location does not exist in the slot.
 func location_checked(loc_id, def = false):
+	if not conn:
+		return def
 	var lid = int(loc_id)
 	return conn.slot_locations.get(lid, def)
 
 
 ## Returns a list of all location ids
 func location_list():
+	if not conn:
+		return []
 	var arr = []
 	arr = conn.slot_locations.keys()
 	return arr
@@ -954,7 +1016,8 @@ func _notification(what):
 
 #region CONSOLE
 
-var output_console_container = null  ## Container for the current output console
+## Container for the current output console.
+var output_console_container = null
 ## The currently attached GodotAP console, if one exists.
 var output_console setget set_output_console, get_output_console
 
@@ -1618,19 +1681,31 @@ func _autofill_items(msg):
 # If the current client is `non-game`, i.e. a `TextOnly`, `Tracker`, or
 # `HintGame` tagged client which cannot send locations.
 var _is_nongame_client = false
+
 var _sort_temp_index_dict = {}
 var _sort_temp_item_dict = {}
 
+# True while a ConnectUpdate flush is already scheduled for this idle frame.
+# Multiple tag mutations within one frame coalesce into a single ConnectUpdate.
+var _tags_update_pending = false
+
 
 func _update_tags():
-	if status == APStatus.PLAYING:
-		send_command("ConnectUpdate", {"tags": AP_GAME_TAGS})
+	if not _tags_update_pending:
+		_tags_update_pending = true
+		call_deferred("_flush_tags_update")
 	_is_nongame_client = false
 	for tag in AP_GAME_TAGS:
 		if tag == "TextOnly" or tag == "Tracker" or tag == "HintGame":
 			_is_nongame_client = true
 			break
 	emit_signal("on_tag_change")
+
+
+func _flush_tags_update():
+	_tags_update_pending = false
+	if status == APStatus.PLAYING:
+		send_command("ConnectUpdate", {"tags": AP_GAME_TAGS})
 
 
 ## Sets a given Archipelago tag (on or off)
@@ -1687,7 +1762,7 @@ func _ensure_connected(console):
 	return false
 
 
-## Changes this connection's DeathLink group
+## Changes this connection's DeathLink group.
 ## Will only send/receive deaths with other clients in the same group
 func set_deathlink_group(group):
 	if group == deathlink_group:

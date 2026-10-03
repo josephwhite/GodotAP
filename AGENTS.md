@@ -13,107 +13,118 @@ A file for [guiding coding agents](https://agents.md/).
 ## Project Goals
 1. **Archipelago library + WebSocket client for Godot 3.6.**
     - Highest priority is fulfilling requirements for any Archipelago client and library.
-    - Handle Websocket connect/send/receive flows to/from Arhipelago servers. 
+    - Handle Websocket connect/send/receive flows to/from Archipelago servers. 
 2. **Library for existing games.**
     - Must work as a reusable library in existing/pre-built games, not just custom games built around GodotAP.
+    - Must utilize the Godot Mod Loader. Other modding platforms for Godot games may also be in scope.
     - Use relative paths in favor of absolute paths.
+    - While targeting Godot 3.6, bug fixes and compatibility for other Godot 3.x versions are good.
 3. **Feature parity with upstream.**
     - Upstream: https://github.com/EmilyV99/GodotAP
     - If an upstream feature can't be reasonably reimplemented due to Godot 3.6 limitation, drop it.
 
 ## Code Style
-Follow Godot's GDScript style guide for all GDScript code (pin the Godot 3.6 docs, not 4.x).
+- Follow Godot's GDScript style guide for all GDScript code.
 
 ## GodotAP-Specific Fixes & Lessons
 
-### WebSocket Refactor
-
-#### `_poll()` Control Flow Mapping
-
-4.x `_poll()` state machine → 3.6 signal handlers:
-
-| 4.x Code | 3.6 Equivalent |
-|---|---|
-| `SOCKET_CONNECTING`: `connect_to_url()`, wait `STATE_OPEN` | `_socket.connect_to_url(url)` + `connection_established` signal → `_on_ws_connected()` |
-| `STATE_CLOSED` → initiate `connect_to_url()` | `ap_reconnect()` / `_on_ws_error()` retry calls `connect_to_url()` directly |
-| `STATE_CONNECTING` → poll → STATE_CLOSED: retry with `_wss` toggle | `connection_error` signal → `_on_ws_error()` with retry |
-| `STATE_OPEN` → `get_available_packet_count()` loop | `data_received` signal → `_on_ws_data()` (fires once per message) |
-| `STATE_CLOSING` → poll until closed | `disconnect_from_host()` then `connection_closed` fires |
-| `send_text(data)` | `_socket.get_peer(1).put_packet(data.to_utf8())` |
-| `send_command()` → `_socket.send_text(s)` | `send_command()` → `_socket.get_peer(1).put_packet(s.to_utf8())` |
-| `send_packet()` → `JSON.stringify` + `send_text` | `send_packet()` → `to_json()` + `put_packet` |
-| `inbound_buffer_size` | **No 3.6 equivalent** — WebSocketClient doesn't expose buffer size |
-
-Refactor `_poll()` entirely. Replace state-machine polling with signal-driven approach.
-
-`WebSocketClient` requires `poll()` each frame for signals to fire. Add `_process(delta)`:
-```gdscript
-func _process(delta):
-    if _socket:
-        _socket.poll()
-```
-
-**Known expected error noise:** `_do_handshake: TLS handshake error: -29184` (`MBEDTLS_ERR_SSL_INVALID_RECORD`) during `_process()` — expected wss→ws fallback: upstream is wss-first, `archipelago.gd` toggles `_wss` in `_on_ws_error` and retries `ws://`. **Not a bug, not a 3.6 regression** — 4.x suppresses this print, 3.6 `ERR_PRINT`s it (stream_peer_mbedtls.cpp, `StreamPeerMbedTLS::_do_handshake`), unsilenceable from GDScript. Verify-safe: the failed-handshake path (`WSLClient::_do_handshake`) `disconnect_from_host()`s then only `connection_error` fires — no `connection_closed` conflict with `ap_reconnect()`.
-
-### Setget Setters
-- `godot_ap/ui/slider_box.gd` (`is_open`) — call `set_is_open()` explicitly on internal writes, incl. `_ready()`-time init.
-- `godot_ap/autoloads/archipelago.gd` (`output_console`) — setter also must sync the member var itself, since ~25 internal reads bypass the getter; internal writes in `_init_console()`/`close_console()` must call `set_output_console()` explicitly.
-- **`godot_ap/autoloads/archipelago.gd` (`status`)** — all internal writes must call `_set_status(APStatus.X)` so `status_updated` fires (and `conn` is nulled + reconnect queue handled on DISCONNECTED). Grep: `rg 'status\s*=\s*APStatus'`.
-
-### Fonts
-- FontVariation features dropped.
-- DynamicFont fallbacks in `.tres`: `fallback/N`, not `fallbacks = [...]`.
+### Connect-Failure Invariants
+- Give-up → `DISCONNECTED` (not DISCONNECTING), emits `connect_step` + `connect_failed` + `disconnected` (embedded hosts reset UI).
+- `_on_ws_closed`: already-`DISCONNECTED` = no-op — never triggers accidental reconnect.
+- Every wss/ws retry loop caps via `_advance_retry()` at `MAX_CONNECT_CYCLES = 5`.
+- Watchdog: one-shot 7s (`CONNECT_WATCHDOG_SECS`), disarmed on connected/closed/error/give-up/disconnect.
+- Expected noise: TLS `-29184` handshake error during `_process()` = wss→ws fallback, unsilenceable in 3.6 — not a bug.
 
 ### Relative Resource Paths
 - All `.gd` preloads plus `.tscn`/`.tres` `ext_resource` refs are folder-relative or resolved from the runtime base dir (`archipelago.gd:_ap_base_dir` from `get_script().resource_path`). The `godot_ap/` folder therefore installs at any depth — `res://godot_ap/`, `res://addons/godot_ap/`, `res://mods-unpacked/<ModID>/…`.
 - Exception: `project.godot`: autoload/theme/class registration is always absolute (engine requirement)
 - **Editor resave absolutizes** `ext_resource` paths in `.tscn`/`.tres` the moment the Godot editor saves them. Enforce relative paths using pre-commit and CI.
 
-### Connect-Failure Ladder
-- Raw-TCP preflight disabled because empty handshake logged HTTP 400s; kept `## UNUSED` for diagnostics. Dead targets fall through to `connect_to_url` → engine `connection_error` → ladder.
-- `_on_ws_error()` gives up after `MAX_CONNECT_CYCLES = 5` full wss/ws cycles (was 50 — ~2-minute hang); the retry cycle in `_advance_retry()` caps at the same limit. Every give-up routes through `_give_up_connecting(msg, tip)`: tears down socket, sets `DISCONNECTED` (**not** DISCONNECTING), emits **`connect_step(msg)`, `connect_failed(msg)`, and `disconnected`** so embedded hosts reset their UI.
-- Stuck-connect watchdog: `CONNECT_WATCHDOG_SECS = 7.0` one-shot `SceneTreeTimer` armed on every dial (`ap_reconnect` async-ok + `_retry_dial`), disarmed on connected/closed/error/give-up/disconnect. Stock `WSLClient` has **no connect timeout** — silent/unanswering targets hang in `SOCKET_CONNECTING` forever; watchdog forces `_give_up_connecting` so `connect_failed` always fires. Late timer fires no-op via the `SOCKET_CONNECTING` status gate.
-- Retries paced by one-shot `SceneTreeTimer(0.25 * _connect_attempts)` → `_retry_dial()` (no-op unless still-`SOCKET_CONNECTING`); scheme flips + cycle counting live in shared `_advance_retry()`, used by both the error-event path and instant `connect_to_url` failures so every loop terminates at the cap.
-- `_on_ws_closed`: already-`DISCONNECTED` status = no-op — late close events after give-up must not trigger the accidental-reconnect branch.
+### Location-Check Validation
+- Server drops the connection on `LocationChecks`/`LocationScouts` for location ids not in this slot.
+- `connection_info.slot_locations` does not include locations excluded by player settings.
+- `location_exists(loc_id)` as a simple check.
+- Datapackage alone is not authoritative.
+- `AP_VALIDATE_LOCATION_CHECKS` adds guards for collecting/scouting locations.
+
+### Tag-Update Coalescing
+- Multiple `ConnectUpdate`s in one frame crash the server.
+`_tags_update_pending` + `call_deferred` flush → one per idle frame.
+
 
 ### GDScript
-- `exp` is a reserved word in Godot 3.6 GDScript — `var exp = …` fails parse with `Expected an identifier for the local variable name`. Use `expected`/`e`.
 - `Color("#rrggbbaa")` parses 8-digit hex as **ARGB** in 3.6 but **RGBA** in Godot 4 — don't assume hex colors round-trip through `Color()` / `Color.to_html()`. 3.6 ports must parse 8-digit hex manually to match Godot 4 (reference-client) semantics.
+- `parse_json` returns floats for every number — `int()` at ingestion, never feed JSON numbers into dict lookups (see [DOWNPATCH.md §parse_json](docs/DOWNPATCH.md)).
 
 ## Tools
 - pwsh
 - [`pre-commit`](\.pre-commit-config.yaml)
 
-### Setup pre-commit
+### Commands
 
 ```bash
+# Setup pre-commit
 pip install pre-commit
 pre-commit install
-pre-commit install-hooks    # pre-build the gdtoolkit 3.6.0 + 4.5.0 envs
+pre-commit install-hooks    # pre-build the gdtoolkit 3.6.0 env
+
+# Run pre-commit
 pre-commit run
 ```
 
-### Run tests (GUT)
+## Tests
 
+- **GUT version: 7.4.3** (Godot 3.x).
+- Configuration: `.gutconfig.json`
+- Test results: `tests/results/test_results.xml`
+- Rules:
+    - Do not use real Archipelago servers. Mocks in integration tests should use a duck-typed fake socket.
+    - Do not use real Archipelago datapackages. Mock `DataCache` in tests with fake locations and items.
+    - Assert on captured signals for error logging, not stderr. Connect the signal under test in `before_each`, collect into an array, assert after the action.
+
+### Commands
 ```bash
-# Headless on Godot 3.6
-godot --no-window --path . -s addons/gut/gut_cmdln.gd -gexit
+# Run tests headless on Godot 3.6
+Godot_v3.6.exe --no-window --path . -s addons/gut/gut_cmdln.gd -gexit
 ```
 
-- **GUT version: 7.4.3** (Godot 3.x)
-- Suites under `tests/` (`.gutconfig.json` drive discovery). `tests/` is outside the gdtoolkit hooks (they match `^godot_ap/.*\.gd$`).
+## Directory Structure
+```ps1
+.github/                    # GitHub config.
+└── workflows/              # CI pipelines.
+addons/                     # Godot add-ons.
+docs/                       # Documentation.
+godot_ap/                   # Library root (installable at any depth).
+├── ap_files/               # AP data classes.
+├── autoloads/              # Archipelago autoload singleton.
+├── managers/               # Command/config/GUI/save managers.
+├── ui/                     # Console.
+│   ├── console/            # Widgets and messages.
+│   ├── custom_containers/  # GUI containers.
+│   └── themes/             # Themed Fonts/Textures/Images.
+│       └── graphics/       # Themed assets.
+└── util/                   # Helpers.
+hooks/                      # CI tooling.
+licenses/                   # Third-party/upstream licenses.
+tests/                      # All tests for GUT.
+├── fixtures/               # Shared mock classes.
+├── integration/            # Autoload/Signal tests.
+├── results/                # Test results.
+└── unit/                   # Class/Method tests.
+```
 
 ## References
 
 ### GodotAP
-- [Engine Oddities in Custom Godot Builds (per-game build oddities and solutions)](docs/ENGINE_ODDITIES.md)
 - [GodotAP Upstream (Godot 4)](https://github.com/EmilyV99/GodotAP)
+- [Engine Oddities in Custom Godot Builds (per-game build oddities and solutions)](docs/ENGINE_ODDITIES.md)
+### Archipelago
+- [Archipelago Network Protocol](https://github.com/ArchipelagoMW/Archipelago/blob/main/docs/network%20protocol.md)
 ### Godot
 - [Godot 3.6 Docs](https://docs.godotengine.org/en/3.6)
     - [GDScript Style Guide](https://docs.godotengine.org/en/3.6/tutorials/scripting/gdscript/gdscript_styleguide.html)
 - [Godot 3.6 Source Code](https://github.com/godotengine/godot/tree/3.6)
 - [Our full generic downpatch reference](docs/DOWNPATCH.md)
 ### Godot Addons/Libs
-- [GUT: Godot Unit Test](https://github.com/bitwes/Gut)
-### Archipelago
-- [Archipelago Network Protocol](https://github.com/ArchipelagoMW/Archipelago/blob/main/docs/network%20protocol.md)
+- [GUT: Godot Unit Test](https://github.com/bitwes/Gut/tree/godot_3x)
+    - [GUT Docs](https://gut.readthedocs.io/en/godot_3x/)

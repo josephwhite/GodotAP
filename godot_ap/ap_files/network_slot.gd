@@ -1,8 +1,15 @@
 class_name NetworkSlot
+## Information about a slot in the multiworld.
+##
+## @tutorial(Archipelago Documentation): https://github.com/ArchipelagoMW/Archipelago/blob/main/docs/network%20protocol.md#networkslot
 
-var name
-var game
-var type
+## The name of the slot.
+var name: String
+## The game played on the slot.
+var game: String
+## Type of slot (spectator = 0x00, player = 0x01, group = 0x02)
+var type: int
+## If the slot is for a group, the IDs of the players in the group.
 var group_members = []
 
 

@@ -1,15 +1,24 @@
 class_name NetworkPlayer
+## A player in the multiworld.
+##
+## @tutorial(Archipelago Documentation): https://github.com/ArchipelagoMW/Archipelago/blob/main/docs/network%20protocol.md#networkplayer
 
-var team
-var slot
-var alias = ""
-var name
+## The ID of the team that the player is on.
+var team: int
+## The player's slot number.
+var slot: int
+## The player's alias.
+var alias: String = ""
+## The player's name.
+var name: String
 
 
+## Get the slot information for this player.
 func get_slot():
 	return Util._get_ap().conn.get_slot(slot)
 
 
+## Get the name or alias for this player.
 func get_name(use_alias = true):
 	var ret = ""
 	if use_alias:
@@ -37,5 +46,6 @@ func _to_string():
 	return "PLAYER(%s[%s],team %d,slot %d)" % [name, alias, team, slot]
 
 
+## Create a label to display on a console.
 func output():
 	return BaseConsole.make_player(slot)

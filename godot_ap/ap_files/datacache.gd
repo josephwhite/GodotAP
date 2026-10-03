@@ -1,8 +1,10 @@
 class_name DataCache
+## Item and location names for a game.
 
 var item_name_to_id = {}
 var location_name_to_id = {}
-var checksum = ""
+## Checksum for the data.
+var checksum: String = ""
 
 
 static func from(data):
@@ -59,5 +61,6 @@ func get_loc_name(id):
 	return str(v) if v else str(id)
 
 
+## Check the validity of this cache.
 func is_valid():
 	return not checksum.empty()

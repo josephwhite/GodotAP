@@ -128,7 +128,8 @@ static func _get_rich_color_name(node, s, default = Color(1, 1, 1)):
 	return default
 
 
-## Gets a 'Color' represented by a 'RichColor'. Uses the 'Theme' of the specified node.
+## Gets a 'Color' represented by a 'RichColor'.
+## Uses the 'Theme' of the specified node.
 static func get_rich_color(node, c, default = Color(1, 1, 1)):
 	if c == RichColor.NIL:
 		return default
@@ -145,7 +146,8 @@ static func _richcolor_find_key(c):
 	return null
 
 
-## Gets a 'Color' represented by a 'SpecialColor'. Uses the 'Theme' of the specified node.
+## Gets a 'Color' represented by a 'SpecialColor'.
+## Uses the 'Theme' of the specified node.
 static func get_special_color(node, c, default = Color(1, 1, 1)):
 	return get_rich_color(node, special_colors.get(c, RichColor.NIL), default)
 
@@ -155,7 +157,7 @@ static func special_to_rich_color(c, default = RichColor.NIL):
 	return special_colors.get(c, default)
 
 
-## Gets a 'Color' from a 'String'. Will use a 'RichColor' if one matches, else falls
-## back to Godot's 'Color.from_string()' implementation.
-static func color_from_name(node, colname, def = Color(0, 0, 0, 0)):
-	return _get_rich_color_name(node, colname, Util._color_from_string(colname, def))
+## Gets a 'Color' from a 'String'.
+## Uses 'RichColor' if one matches, falls back to Godot's 'Color.from_string()' implementation.
+static func color_from_name(node, colname, default = Color(0, 0, 0, 0)):
+	return _get_rich_color_name(node, colname, Util._color_from_string(colname, default))

@@ -1,10 +1,18 @@
 class_name NetworkItem
+## A multiworld item.
+##
+## @tutorial(Archipelago Documentation): https://github.com/ArchipelagoMW/Archipelago/blob/main/docs/network%20protocol.md#networkitem
 
-var id
-var loc_id
-var src_player_id
-var dest_player_id
-var flags
+## The item's ID.
+var id: int
+## The ID of this item's location.
+var loc_id: int
+## The ID of the player whose world this item is in.
+var src_player_id: int
+## The ID of the player who will receive this item.
+var dest_player_id: int
+## Combination of bit flags with information about the item.
+var flags: int
 
 const _BC_state = {"ref": null}
 

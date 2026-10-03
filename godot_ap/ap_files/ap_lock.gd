@@ -1,11 +1,15 @@
 class_name APLock extends Node
 ## Data unique to a room connection, locking a save to only connect to the same room.
 
-var valid = false
-var player_id = 0
-var team_id = 0
-var slot_name = ""
-var seed_name = ""
+## Whether or not the lock is valid.
+var valid: bool = false
+## The ID of the player.
+var player_id: int = 0
+## The ID of the team.
+var team_id: int = 0
+var slot_name: String = ""
+## The name of the seed.
+var seed_name: String = ""
 
 
 func lock(conn):
@@ -28,12 +32,13 @@ func lock(conn):
 	return ret
 
 
+## Release the lock, invalidating it.
 func unlock():
 	valid = false
 
 
 func read(file):
-	valid = file.get_8()
+	valid = file.get_8() != 0
 	if not valid:
 		return true
 	player_id = file.get_32()
