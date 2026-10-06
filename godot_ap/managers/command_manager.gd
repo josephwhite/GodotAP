@@ -73,7 +73,7 @@ func call_cmd(msg):
 		return
 	var cmd = get_command(msg.split(" ", true, 1)[0])
 	if cmd and cmd.call_target:
-		if cmd.is_disabled():
+		if cmd.is_disabled() or (cmd.is_debug() and debug_disabled()):
 			console.add(
 				BaseConsole.make_text(
 					"Command '%s' is disabled!" % cmd.text,
@@ -96,8 +96,8 @@ func get_command(cmdname):
 	return _commands_by_name.get(cmdname.to_lower())
 
 
-static func _cmd_is_enabled(cmd):
-	return not cmd.is_disabled()
+func _cmd_is_enabled(cmd):
+	return not (cmd.is_disabled() or (cmd.is_debug() and debug_disabled()))
 
 
 static func _cmd_is_debug(cmd):
@@ -131,10 +131,12 @@ func _cmd_help(mgr, _cmd, _msg):
 	folder.fold(false)
 
 
+## Clear console
 func _cmd_cls(mgr, _cmd, _msg):
 	mgr.console.clear()
 
 
+## Clear message history from console
 func _cmd_clr_hist(mgr, _cmd, _msg):
 	mgr.console.window.typing_bar.history_clear()
 

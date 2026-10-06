@@ -350,4 +350,4 @@ func send_traplink(trap_name):
 	cmd["data"]["source"] = get_player_name(-1, false)
 	_get_ap().last_sent_traplink_time = OS.get_unix_time()
 	cmd["data"]["time"] = _get_ap().last_sent_traplink_time
-	send_bounce(cmd, [], [], ["TrapLink"])
+	send_bounce(cmd, [], [], [_get_ap().get_traplink_tag()])

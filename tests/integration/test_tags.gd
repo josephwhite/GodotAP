@@ -18,6 +18,15 @@ func _setup_conn():
 	_ap.conn = conn
 
 
+## Connection with a resolvable player, for the send_* bounce paths.
+func _setup_conn_with_player():
+	_setup_conn()
+	var plyr = NetworkPlayer.new()
+	plyr.name = "Alice"
+	_ap.conn.players = [plyr]
+	_ap.conn.player_id = 1
+
+
 func _setup_fake_socket():
 	_ap._socket = FAKE.FakeSocket.new()
 
@@ -77,6 +86,7 @@ func after_each():
 	_ap.AP_GAME_TAGS.clear()
 	_ap._is_nongame_client = false
 	_ap.deathlink_group = ""
+	_ap.traplink_group = ""
 	_ap.last_sent_deathlink_time = 0.0
 	_ap.last_sent_traplink_time = 0.0
 	_ap.TRAP_LINK_ALIASES = {}
@@ -107,6 +117,14 @@ func test_deathlink_default_group_is_empty():
 	assert_eq(_ap.deathlink_group, "")
 
 
+func test_traplink_default_tag():
+	assert_eq(_ap.get_traplink_tag(), "TrapLink")
+
+
+func test_traplink_default_group_is_empty():
+	assert_eq(_ap.traplink_group, "")
+
+
 func test_nongame_false_by_default():
 	assert_false(_ap._check_nongame_client())
 
@@ -124,6 +142,35 @@ func test_deathlink_group_change():
 	assert_false(_ap.is_deathlink())
 
 
+func test_traplink_group_change():
+	assert_eq(_ap.get_traplink_tag(), "TrapLink")
+	_ap.set_traplink_group("g2")
+	assert_eq(_ap.get_traplink_tag(), "TrapLinkg2")
+	# Setting TrapLink Group does not imply TrapLink is active
+	assert_false(_ap.is_traplink())
+
+
+## Changing the group while TrapLink is live re-tags the link.
+func test_traplink_group_change_while_enabled():
+	_ap.set_traplink(true)
+	assert_true(_ap.has_tag("TrapLink"))
+	_ap.set_traplink_group("g2")
+	assert_false(_ap.has_tag("TrapLink"))
+	assert_true(_ap.has_tag("TrapLinkg2"))
+	assert_true(_ap.is_traplink())
+
+
+## Re-setting the same group is a no-op and leaves the link alone.
+func test_traplink_group_change_same_value_noop():
+	_ap.set_traplink_group("g2")
+	_ap.set_traplink(true)
+	var changes = _tag_changes
+	_ap.set_traplink_group("g2")
+	assert_eq(_ap.get_traplink_group(), "g2")
+	assert_true(_ap.is_traplink())
+	assert_eq(_tag_changes, changes)
+
+
 ## Based on bug where calling set_tags twice sequentially crashes the game
 func test_deathlink_and_traplink_same_frame():
 	assert_false(_ap.is_deathlink())
@@ -136,9 +183,9 @@ func test_deathlink_and_traplink_same_frame():
 	var death_count = 0
 	var trap_count = 0
 	for tag in _ap.AP_GAME_TAGS:
-		if tag == "DeathLink":
+		if tag == _ap.get_deathlink_tag():
 			death_count += 1
-		elif tag == "TrapLink":
+		elif tag == _ap.get_traplink_tag():
 			trap_count += 1
 	assert_eq(death_count, 1)
 	assert_eq(trap_count, 1)
@@ -157,7 +204,15 @@ func test_nongame_status_by_confirmed_tags():
 		assert_true(_ap._check_nongame_client(), "tag %s marks nongame" % tag)
 		_ap.set_tag(tag, false)
 	# Is (or can be) a game
-	for tag in ["DeathLink", "TrapLink", "NoText"]:
+	for tag in [_ap.get_deathlink_tag(), _ap.get_traplink_tag(), "NoText"]:
+		_ap.set_tag(tag)
+		assert_false(_ap._check_nongame_client(), "tag %s keeps nongame false" % tag)
+		_ap.set_tag(tag, false)
+
+
+## A grouped link tag is still not a nongame marker.
+func test_nongame_false_for_grouped_link_tags():
+	for tag in ["DeathLinkd1", "TrapLinkt1"]:
 		_ap.set_tag(tag)
 		assert_false(_ap._check_nongame_client(), "tag %s keeps nongame false" % tag)
 		_ap.set_tag(tag, false)
@@ -214,8 +269,8 @@ func test_set_misc_tags_preserves_active_links():
 	_ap.set_traplink(true)
 	_ap.set_misc_tags(["TextOnly"])
 	assert_true(_ap.has_tag("TextOnly"))
-	assert_true(_ap.has_tag("DeathLink"))
-	assert_true(_ap.has_tag("TrapLink"))
+	assert_true(_ap.has_tag(_ap.get_deathlink_tag()))
+	assert_true(_ap.has_tag(_ap.get_traplink_tag()))
 	assert_true(_ap._check_nongame_client())
 
 
@@ -228,13 +283,60 @@ func test_set_misc_tags_preserves_group_variant():
 	assert_true(_ap.has_tag("TextOnly"))
 
 
-func test_set_misc_tags_erases_inactive_links():
+## Grouped DeathLink and TrapLink are both preserved by a misc-tag overwrite.
+func test_set_misc_tags_preserves_both_group_variants():
+	_ap.set_deathlink_group("d1")
+	_ap.set_traplink_group("t1")
+	_ap.set_deathlink(true)
+	_ap.set_traplink(true)
 	_ap.set_misc_tags(["TextOnly"])
+	assert_true(_ap.has_tag("DeathLinkd1"))
+	assert_true(_ap.has_tag("TrapLinkt1"))
 	assert_false(_ap.has_tag("DeathLink"))
 	assert_false(_ap.has_tag("TrapLink"))
+	assert_true(_ap.has_tag("TextOnly"))
+
+
+func test_set_misc_tags_erases_inactive_links():
+	_ap.set_misc_tags(["TextOnly"])
+	assert_false(_ap.has_tag(_ap.get_deathlink_tag()))
+	assert_false(_ap.has_tag(_ap.get_traplink_tag()))
 	assert_eq_deep(_ap.AP_GAME_TAGS, ["TextOnly"])
 	_ap.set_misc_tags([])
 	assert_eq(_ap.AP_GAME_TAGS.size(), 0)
+
+
+## Clearing the group while the link is live re-tags it to the bare variant,
+## so set_misc_tags then preserves that bare tag rather than dropping it.
+func test_group_cleared_while_enabled_falls_back_to_bare_tag():
+	_ap.set_deathlink_group("d1")
+	_ap.set_traplink_group("t1")
+	_ap.set_deathlink(true)
+	_ap.set_traplink(true)
+	_ap.set_deathlink_group("")
+	_ap.set_traplink_group("")
+	assert_false(_ap.has_tag("DeathLinkd1"))
+	assert_false(_ap.has_tag("TrapLinkt1"))
+	assert_true(_ap.is_deathlink())
+	assert_true(_ap.is_traplink())
+	_ap.set_misc_tags(["TextOnly"])
+	assert_true(_ap.has_tag("DeathLink"))
+	assert_true(_ap.has_tag("TrapLink"))
+	assert_true(_ap.has_tag("TextOnly"))
+
+
+## Disabling the links first means clearing the group leaves nothing to preserve.
+func test_set_misc_tags_erases_grouped_variants_when_links_off():
+	_ap.set_deathlink_group("d1")
+	_ap.set_traplink_group("t1")
+	_ap.set_deathlink(true)
+	_ap.set_traplink(true)
+	_ap.set_deathlink(false)
+	_ap.set_traplink(false)
+	_ap.set_deathlink_group("")
+	_ap.set_traplink_group("")
+	_ap.set_misc_tags(["TextOnly"])
+	assert_eq_deep(_ap.AP_GAME_TAGS, ["TextOnly"])
 
 
 #endregion
@@ -308,15 +410,15 @@ func test_transient_removal_flushes_final_tags():
 	assert_eq(_ap._socket.peer.sent.size(), 1)
 	var frame = _last_sent()
 	assert_eq(frame["cmd"], "ConnectUpdate")
-	assert_eq_deep(frame["tags"], ["TrapLink"])
+	assert_eq_deep(frame["tags"], [_ap.get_traplink_tag()])
 
 
 #endregion
 
-#region Bounce
+#region Bounce - Untagged
 
 
-## Even if no tags are present, we still fire a signal in general.
+## Even if no tags are present, we still fire a signal.
 func test_bounced_signal_fires_for_untagged_packet():
 	_setup_conn()
 	_receive_from_server(
@@ -340,7 +442,7 @@ func test_bounce_untagged_fires_bounce_but_no_derived():
 
 #endregion
 
-#region Bounce - DeathLink/TrapLink
+#region Bounce - DeathLink/TrapLink Recieves
 
 
 func test_bounce_deathlink_signal():
@@ -424,5 +526,121 @@ func test_bounce_wrong_group_variant_ignored():
 	)
 	assert_eq(_logged, [])
 	assert_eq(_bounced, 1)
+
+
+func test_bounce_traplink_group_variant():
+	_setup_conn()
+	_ap.conn.connect("traplink", self, "_on_traplink")
+	_ap.set_traplink_group("g2")
+	_ap.set_traplink(true)
+	_receive_from_server(
+		'{"cmd":"Bounced","tags":["TrapLinkg2"],"data":{"time":10.0,"source":"Bob","trap_name":"trap"}}'
+	)
+	assert_eq(_logged, ["traplink:Bob:trap"])
+	assert_eq(_bounced, 1)
+
+
+## A grouped TrapLink tag does not match an ungrouped bounce.
+func test_bounce_traplink_wrong_group_variant_ignored():
+	_setup_conn()
+	_ap.conn.connect("traplink", self, "_on_traplink")
+	_ap.set_traplink_group("g2")
+	_receive_from_server(
+		'{"cmd":"Bounced","tags":["TrapLink"],"data":{"time":10.0,"source":"Bob","trap_name":"trap"}}'
+	)
+	assert_eq(_logged, [])
+	assert_eq(_bounced, 1)
+
+
+## Grouped TrapLink bounces still resolve aliases.
+func test_bounce_traplink_group_variant_with_alias():
+	_setup_conn()
+	_ap.conn.connect("traplink", self, "_on_traplink")
+	_ap.set_traplink_group("g2")
+	_ap.set_traplink(true)
+	_ap.TRAP_LINK_ALIASES = {"foo": "Illusory Wall"}
+	_receive_from_server(
+		'{"cmd":"Bounced","tags":["TrapLinkg2"],"data":{"time":10.0,"source":"Bob","trap_name":"foo"}}'
+	)
+	assert_eq(_logged, ["traplink:Bob:Illusory Wall"])
+	assert_eq(_bounced, 1)
+
+
+## Groups are independent: a grouped TrapLink still ignores grouped DeathLink.
+func test_bounce_traplink_group_ignores_grouped_deathlink():
+	_setup_conn()
+	_ap.conn.connect("deathlink", self, "_on_deathlink")
+	_ap.conn.connect("traplink", self, "_on_traplink")
+	_ap.set_traplink_group("g2")
+	_receive_from_server(
+		'{"cmd":"Bounced","tags":["DeathLinkg2"],"data":{"time":10.0,"source":"Alice","cause":"boom"}}'
+	)
+	assert_eq(_logged, [])
+	assert_eq(_bounced, 1)
+
+
+#endregion
+
+#region Bounce - DeathLink/TrapLink Sends
+
+
+func test_send_traplink_tags_bounce_with_current_tag():
+	_setup_conn_with_player()
+	_ap.set_traplink(true)
+	_ap.conn.send_traplink("trap")
+	var frame = _last_sent()
+	assert_eq(frame["cmd"], "Bounce")
+	assert_eq_deep(frame["tags"], ["TrapLink"])
+	assert_eq(frame["data"]["trap_name"], "trap")
+	assert_eq(frame["data"]["source"], "Alice")
+
+
+## The outbound Bounce must carry the grouped tag, not the bare literal.
+func test_send_traplink_tags_bounce_with_grouped_tag():
+	_setup_conn_with_player()
+	_ap.set_traplink_group("g2")
+	_ap.set_traplink(true)
+	_ap.conn.send_traplink("trap")
+	var frame = _last_sent()
+	assert_eq(frame["cmd"], "Bounce")
+	assert_eq_deep(frame["tags"], ["TrapLinkg2"])
+
+
+func test_send_deathlink_tags_bounce_with_grouped_tag():
+	_setup_conn_with_player()
+	_ap.set_deathlink_group("d1")
+	_ap.set_deathlink(true)
+	_ap.conn.send_deathlink("boom")
+	var frame = _last_sent()
+	assert_eq(frame["cmd"], "Bounce")
+	assert_eq_deep(frame["tags"], ["DeathLinkd1"])
+
+
+## Sending without the link enabled must not put anything on the wire.
+func test_send_traplink_blocked_when_grouped_link_off():
+	_setup_conn_with_player()
+	_ap.set_traplink_group("g2")
+	_ap.conn.send_traplink("trap")
+	assert_eq(_ap._socket.peer.sent.size(), 0)
+
+#endregion
+
+#region Bounce - Custom Links/Tags
+
+func test_knockbacklink_send():
+	_setup_conn_with_player()
+	_ap.set_tag("KnockbackLink")
+	var knockback = Vector3(10, 5, 1)
+	var cmd = {"data": {}}
+	cmd["data"]["source"] = _ap.conn.get_player_name(-1, false)
+	cmd["data"]["source"] = ""
+	cmd["data"]["time"] = OS.get_unix_time()
+	cmd["data"]["value"] = {"x": knockback.x, "y": knockback.y, "z": knockback.z}
+	_ap.conn.send_bounce(cmd, [], [], ["KnockbackLink"])
+	# Did we send?
+	var frame = _last_sent()
+	assert_eq(frame["cmd"], "Bounce")
+	assert_eq_deep(frame["tags"], ["KnockbackLink"])
+
 
 #endregion

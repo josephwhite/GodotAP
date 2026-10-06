@@ -40,8 +40,7 @@ export var READABLE_DATAPACK_FILES = true
 export var datapack_cached_fields = ["item_name_to_id", "location_name_to_id", "checksum"]
 ## Size, in MB, of the websocket inbound buffer. Raising may help if large datapackages are causing disconnections.
 export(int, 5, 500, 1) var websocket_inbuffer_mb = 50
-## Game/engine compatibility toggles.
-## All default to `false` (stock Godot 3.6 behavior).
+## Game/engine compatibility toggles. All default to `false` (stock Godot 3.6 behavior).
 ## Each key makes the library defer to a non-native-crash implementation of a
 ## construct a custom engine build cannot execute (see docs/ENGINE_ODDITIES.md).
 export var casus = {
@@ -53,9 +52,8 @@ export var AP_VALIDATE_LOCATION_CHECKS = true
 
 onready var hang_clock = $HangTimer
 
-## The base directory of this GodotAP install. Computed at runtime from this
-## script's location, so the module can be loaded from anywhere (e.g. inside a
-## mod's unpacked folder).
+## The base directory of this GodotAP install. Computed at runtime from this script's location,
+## so the module can be loaded from anywhere (e.g. inside a mod's unpacked folder).
 var _ap_base_dir = "res://godot_ap"
 
 
@@ -119,6 +117,9 @@ var last_sent_traplink_time = 0.0
 ## The group that is used for DeathLink for this connection
 var deathlink_group = "" setget set_deathlink_group, get_deathlink_group
 
+## The group that is used for TrapLink for this connection
+var traplink_group = "" setget set_traplink_group, get_traplink_group
+
 ## The current connection credentials to be used
 var creds = null
 ## The current APLock object. A default lock object is `unlocked`.
@@ -149,12 +150,12 @@ signal connect_step(message)
 signal connect_failed(message)
 ## The possible connection status states.
 enum APStatus {
-	DISCONNECTED,  ## Not connected to any Archipelago server
-	SOCKET_CONNECTING,  ## Socket attempting to connect
-	CONNECTING,  ## Socket connected, trying to connect with server
-	CONNECTED,  ## Connected with server, authenticating for selected slot
-	PLAYING,  ## Authenticated and acively playing
-	DISCONNECTING,  ## Attempting to disconnect from the server
+	DISCONNECTED,  ## Not connected to any Archipelago server.
+	SOCKET_CONNECTING,  ## Socket attempting to connect.
+	CONNECTING,  ## Socket connected, trying to connect with server.
+	CONNECTED,  ## Connected with server, authenticating for selected slot.
+	PLAYING,  ## Authenticated and acively playing.
+	DISCONNECTING,  ## Attempting to disconnect from the server.
 }
 var _queue_reconnect = false
 ## The current connection status.
@@ -664,7 +665,7 @@ func _handle_command(json):
 				var source = json["data"].get("source", "")
 				var cause = json["data"].get("cause", "")
 				conn.emit_signal("deathlink", source, cause, json)
-			if tags.has("TrapLink"):
+			if tags.has(get_traplink_tag()):
 				var tstamp = json["data"].get("time", 0.0)
 				if abs(tstamp - last_sent_traplink_time) < 0.5:
 					return  # Skip traps from self
@@ -697,7 +698,7 @@ var _datapack_cache = {}
 var _datapack_pending = []
 
 
-## For each game (key) in the [param checksums] dictionary, requests an update for its datapackage
+## For each game (key) in the checksums dictionary, requests an update for its datapackage
 ## if the locally stored checksum does not match the given value.
 func handle_datapackage_checksums(checksums):
 	# Ensure the directory exists
@@ -1277,7 +1278,7 @@ func _ready():
 	# 'save_manager' can be null
 
 
-## Item Classification bits
+## Item Classification bits.
 enum ItemClassification { FILLER = 0b000, PROG = 0b001, USEFUL = 0b010, TRAP = 0b100 }
 
 
@@ -1738,7 +1739,7 @@ func set_tags(tags):
 
 ## Sets the Archipelago connection tags (overwrites tags except supported tags 'DeathLink' / 'TrapLink')
 func set_misc_tags(tags):
-	var supported_tags = [get_deathlink_tag(), "TrapLink"]
+	var supported_tags = [get_deathlink_tag(), get_traplink_tag()]
 	tags = tags.duplicate()
 	for tag in supported_tags:
 		if tag in AP_GAME_TAGS:
@@ -1796,23 +1797,47 @@ func is_deathlink():
 	return has_tag(get_deathlink_tag())
 
 
+## Changes this connection's TrapLink group
+## Will only send/receive traps with other clients in the same group
+func set_traplink_group(group):
+	if group == traplink_group:
+		return
+	var traplink = is_traplink()
+	if traplink:
+		set_traplink(false)
+	traplink_group = group
+	if traplink:
+		set_traplink(true)
+
+
+## Returns the current TrapLink group name
+## Will only send/receive traps with other clients in the same group
+func get_traplink_group():
+	return traplink_group
+
+
+## Returns the tag being used for TrapLink (including TrapLink group support)
+func get_traplink_tag():
+	return "TrapLink" + traplink_group
+
+
 ## Turn 'TrapLink' on or off
 func set_traplink(state):
-	set_tag("TrapLink", state)
+	set_tag(get_traplink_tag(), state)
 
 
 ## Check if 'TrapLink' is on
 func is_traplink():
-	return has_tag("TrapLink")
+	return has_tag(get_traplink_tag())
 
 
-## Archipelago client statuses
+## Archipelago client statuses.
 enum ClientStatus {
-	CLIENT_UNKNOWN = 0,  ## error value
-	CLIENT_CONNECTED = 5,  ## at least one client has connected to this slot
-	CLIENT_READY = 10,  ## this slot has indicated it is 'ready'
-	CLIENT_PLAYING = 20,  ## this slot has begun playing
-	CLIENT_GOAL = 30  ## this slot has won
+	CLIENT_UNKNOWN = 0,  ## Error value.
+	CLIENT_CONNECTED = 5,  ## At least one client has connected to this slot.
+	CLIENT_READY = 10,  ## This slot has indicated it is ready.
+	CLIENT_PLAYING = 20,  ## This slot has begun playing.
+	CLIENT_GOAL = 30  ## This slot has won.
 }
 
 

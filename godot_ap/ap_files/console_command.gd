@@ -71,7 +71,7 @@ func debug(state = true):
 #endregion
 
 
-## Returns [code]true[/code] if the command is debug-only.
+## Returns true if the command is debug-only.
 func is_debug():
 	return _debug
 

@@ -22,6 +22,8 @@ Godot 3.6 scene loader/`Control::_set` (control.cpp) ignores the `theme_constant
 - `gui/theme/custom="uid://..."` → `gui/theme/custom="res://path"`
 - `renderer/rendering_method="gl_compatibility"` → `quality/driver/driver_name="GLES3"`
 
+**Global class names are a known collision risk.** 3.6 resolves `class_name` types through `_global_script_classes` in `project.godot`, and `godot_ap/` registers 38 of them. Several of ours are generic enough to collide with a host game's own registrations when the library is dropped into a pre-built game — `GUI`, `Util`, `Version`, `AP`, `SaveFile`, `ThemeBox`, `FontStorage`. One side silently wins. Prefixing (`APGUI`, `APUtil`, …) would resolve it but touches many files, so treat this as **known, accepted, unfixed**; see [Type Hints](#type-hints) for why untyped parameters keep us out of the failure path meanwhile.
+
 ### WebSocket Overhaul
 Godot 4 uses `WebSocketPeer` (direct poll API). Godot 3 uses `WebSocketClient` (signal-based).
 
@@ -327,7 +329,9 @@ func resolve_status(loc_id, default = null):
         default = OtherClass.SomeEnum.VALUE
 ```
 
-Function body refs are deferred to runtime — only default parameter values and `const`/`preload` at class scope cause the cycle.
+Function **value** refs are deferred to runtime — only default parameter values and `const`/`preload` at class scope cause the cycle.
+
+**Type** refs are *not* deferred. A type hint in a signature (or an `as` cast) is resolved by `_parse_type` at parse time, so it produces a dependency just as strong as a default parameter value and breaks a mutual reference the same way. `func f(x: OtherClass)` inside a mutual reference is therefore **not** safe in 3.6. See [Type Hints](#type-hints).
 
 #### `var` Initializer Cross-Class Cycle
 `var` initializers referencing another `class_name`'s enum/const also execute at parse time. Same fix: default to `null`, assign real value in `_init()`.
@@ -723,8 +727,6 @@ Godot 3.6 has no `Texture2D` class (4.x rename); textures are plain `Texture`. A
 rg 'type="Texture2D"' -g '*.tres' -g '*.tscn' -g '*.import'
 ```
 
----
-
 ### GDScript Syntax Rules (3.6)
 
 ### Annotations
@@ -738,7 +740,49 @@ rg 'type="Texture2D"' -g '*.tres' -g '*.tscn' -g '*.import'
 |@export_range(a,b,c,d,e) |# NOT AVAILABLE; drop extra args. Float steps may fail — use ints: export(int, 0, 20, 1)|
 |@export_group("X")       |# NOT AVAILABLE, remove|
 |@export_subgroup("X")    |# NOT AVAILABLE, remove|
-|@warning_ignore("x")     |# NOT AVAILABLE, remove|
+|@warning_ignore("x")     |# NOT AVAILABLE as an annotation. 3.6 uses comment directives instead — see Comments and BBCode|
+
+### Comments and BBCode
+**3.6 has no doc-comment system.** `ScriptLanguage` in 3.6 exposes only `get_comment_delimiters()`; nothing reads a script member's documentation from a comment, and there is no BBCode renderer anywhere in the 3.6 engine or editor. Doc comments (`##`) and BBCode are both **Godot 4.0** features.
+
+So `[code]`, `[codeblock]`, `[br]`, `[b]`, `[i]`, `[method]`, `[member]`, `[signal]`, `[param x]`, and `[Class]` are **4.x-only**. Ported from upstream they are dead weight that renders as literal noise. Flatten them:
+
+| 4.x doc comment | 3.6 replacement |
+|---|---|
+| ``Returns [code]true[/code] if debug-only`` | `Returns true if debug-only` |
+| `Look up [method get_tag]` | `Look up get_tag()` |
+| `The [param checksums] dictionary` | `The checksums dictionary` |
+| `[br]` for a line break | a new `#` line |
+
+We still write `##` doc comments. They are inert under 3.6, but they match upstream Godot 4, which keeps files diffable against upstream. Treat them as plain source comments and do not reintroduce BBCode into them.
+
+**Code blocks in comments.** There is no `[codeblock]`; use consecutive comment lines and indent *after* the `#` with tabs. Both the leading whitespace *before* the `#` and the comment body after it are hand-maintained — no formatter runs, so nothing re-indents either for us:
+
+```gdscript
+## Connects to the server. In 3.6 a bare method name is a parse error, so use
+## the string form:
+##	target.connect("connected", self, "my_func")
+```
+
+**Warning suppression is available, as comments.** 3.6 has no `@warning_ignore` annotation, but the tokenizer honors three comment directives:
+
+```gdscript
+# 4.x:
+@warning_ignore("unused_variable")
+
+# 3.6 - tag goes on the line BEFORE the offending code,
+# and suppresses ONE occurrence:
+# warning-ignore:unused_variable
+var unused = 1
+
+# 3.6 - suppress every occurrence of a code for the rest of the file:
+# warning-ignore-all:unused_variable
+
+# 3.6 - disable all warnings for the rest of the file:
+# warnings-disable
+```
+
+The tokenizer records the line *after* the comment, and the parser matches the nearest skip whose line is `<=` the warning's line, then removes it — so the directive applies forward to the next matching warning only, not retroactively to the tagged line and not to all later ones. That forward-only, single-use behaviour differs from the 4.x annotation.
 
 ### Built-in Type Constants
 Godot 4 added uppercase static constants to built-in types (`Color.WHITE`, `Color.TRANSPARENT`). Godot 3 uses lowercase equivalents or constructors:
@@ -775,24 +819,89 @@ func _color_from_string(str, default):
 ```
 
 ### Type Hints
-**All type hints must be removed** in 3.6:
+Typed GDScript has worked since **Godot 3.1**, so simple type hints survive the downpatch. Keep them — they are documentation and CI enforces style around them.
+
+**Built-in types: annotate freely.**
+
 ```gdscript
-# WRONG (4.x):
-var x: int
-var arr: Array[String]
-var dict: Dictionary[String, int]
-var socket: WebSocketPeer
-func f(x: String) -> bool:
-func g() -> void:
+var x: int = 5
+var name: String
+var socket: WebSocketPeer          # core/engine class types are fine
+var inferred := 5                  # ':=' inference works in 3.6 too
+const MAX: int = 5
+
+func f(x: String) -> bool:         # typed param + typed return
+	return true
+func g() -> void:                  # '-> void' is valid 3.6, NOT a 4.x addition
+	pass
+func _process(delta: float) -> void:
+	pass
+static func h(a: int) -> int:      # typed static funcs are fine
+	return a
+
+var v = 0 setget set_v, get_v
+func set_v(nv: int):               # typed setget params are fine
+	v = nv
+```
+
+**4.x-only forms: must be stripped.**
+
+```gdscript
+# WRONG (4.x - parse error in 3.6):
+var arr: Array[String]              # typed arrays are 4.0
+var dict: Dictionary[String, int]   # typed dictionaries are 4.0
+for name: String in names:          # cannot type a for-loop variable
+	pass
+signal bounce(json: Dictionary)     # signal args must be bare identifiers
 
 # CORRECT (3.6):
-var x
-var arr
-var dict
-var socket
-func f(x):
-func g():
+var arr: Array
+var dict: Dictionary
+for name in names:
+	pass
+signal bounce(json)
 ```
+
+**Custom class names in signatures: banned in `godot_ap/`.**
+
+This is the one category where a hint is actively harmful, because types are resolved at **parse** time. `GDScriptParser::_parse_type` (`gdscript_parser.cpp`) runs while the signature is being parsed and branches three ways:
+
+| Type written | 3.6 result |
+|---|---|
+| Built-in (`int`, `String`, `void`) | `DataType::BUILTIN` — resolved immediately, no dependency, no cost |
+| Identifier that matches `ClassDB` | `DataType::NATIVE` — **the engine class wins; your `class_name` script is never consulted** |
+| Any other identifier | `DataType::UNRESOLVED` — resolved in a later pass, i.e. a **parse-time cross-script load-order dependency** |
+
+Consequences:
+
+- **Engine names silently shadow yours.** `ClassDB::class_exists()` is checked *before* the script registry. A `class_name Button` in our tree would be unusable as a hint: every `func f(b: Button)` would bind to the engine's `Button`, with no error and no warning.
+- **Mutual references become hard parse errors.** Because the hint resolves at parse time, `A.f(b: B)` plus `B.g(a: A)` fails the same way a cross-class default parameter value does. See *Default Parameter Cross-Class Cycle* — and note the caveat there about which references are deferred.
+- **`as` casts are identical.** `x as SomeClass` goes through the same `_parse_type` path, so it is a parse-time dependency too — not a deferred one.
+- **Host games can steal our global names.** `class_name` hints resolve through `project.godot`'s `_global_script_classes`. `godot_ap/` installs into arbitrary pre-built games, so a host that registers its own `NetworkPlayer`/`DataCache`/`ConnectionInfo` makes our hints bind to *their* class. Untyped parameters are immune.
+- **`preload`-as-type breaks arbitrary-depth install.** `godot_ap/` deliberately uses **zero** `preload()`; everything resolves at runtime through `Util._ap_load`/`_ap_base_dir` so the folder installs at any depth. `const Foo = preload(...)` used as a type reintroduces parse-time path resolution and loses that property.
+
+Use a doc comment to name the type instead:
+
+```gdscript
+# WRONG (parse-time dependency on another script):
+func get_player(slot) -> NetworkPlayer:
+
+# CORRECT (3.6-safe, arbitrary-depth safe):
+## Returns the NetworkPlayer for `slot`, or null if unknown.
+func get_player(slot):
+```
+
+Current state of `godot_ap/`, which already complies: 38 typed `var`s (all built-in), one typed return (`configs.gd` `generate_uuid() -> String`), zero custom-class `as` casts, zero `preload`.
+
+**Enum as a type slips past CI.** The 3.6 parser *accepts* `var e: MyEnum`, so `gdlint` does not object, but it is still an error. Drop the annotation:
+
+```gdscript
+enum MoveDirection { UP, DOWN, LEFT, RIGHT }
+var current: MoveDirection     # error in 3.6 - passes the parser, fails anyway
+var current                    # correct
+```
+
+Two further 3.6 limits from the official docs: you cannot type individual array members (`[$Goblin: Enemy]`), and two scripts cannot type-reference each other cyclically.
 
 ### `is` Operator
 Works in 3.6. `x is Dictionary`, `x is String`, `x is Array` all valid.
@@ -858,6 +967,22 @@ Works in 3.6 (since 3.1).
   emit_signal("updated", self)
   other.emit_signal("signal_name_on_other", arg)
   ```
+
+### Signal Arguments (3.6)
+Signal parameters **must be bare identifiers**. 3.6's parser only accepts identifiers inside a signal's argument list and errors on anything else:
+
+```gdscript
+# 4.x:
+signal bounce(json: Dictionary)
+
+# 3.6 - parse error: Expected an identifier in a "signal" argument.
+signal bounce(json: Dictionary)
+
+# 3.6 (correct):
+signal bounce(json)
+```
+
+This is an **engine-level** restriction, not a lint preference — `gdscript_parser.cpp` pushes only `get_token_identifier()` per argument, so the annotation is never consumed. Upstream (Godot 4) types its signals, which makes this the highest-frequency porting trap in the whole downpatch: **every** upstream `signal` line needs its annotations stripped.
 
 ### `const` and `enum`
 - `const X = val` works in 3.6

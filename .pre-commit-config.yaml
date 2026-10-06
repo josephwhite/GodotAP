@@ -14,7 +14,7 @@ repos:
         types: [text]
         files: ^godot_ap/.*\.(tscn|tres)$
 
-  # GDScript linter and formatter
+  # GDScript linter
   - repo: https://github.com/Scony/godot-gdscript-toolkit
     rev: 3.6.0
     hooks:
@@ -24,11 +24,4 @@ repos:
         description: Lint GDScript files (Godot 3.6).
         entry: pwsh -NoProfile -File hooks/pre-commit-gdtoolkit.ps1 -Tool gdlint -BranchRegex '^downpatch-3\.6\.0'
         additional_dependencies: [setuptools<81]   # pkg_resources removed in v81+
-        files: \.gd$
-      - id: gdformat
-        alias: gdformat-36
-        name: gdformat (Godot 3.6)
-        description: Format GDScript files (Godot 3.6).
-        entry: pwsh -NoProfile -File hooks/pre-commit-gdtoolkit.ps1 -Tool gdformat -BranchRegex '^downpatch-3\.6\.0'
-        additional_dependencies: [setuptools<81]   # pkg_resources removed in v81+
-        files: \.gd$
+        types: [gdscript]

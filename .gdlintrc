@@ -1,12 +1,18 @@
+# gdlint configuration (Godot 3.6 / gdtoolkit 3.6.0).
+
 disable:
+# 3.6 accepts any order and we prefer logical grouping
 - class-definitions-order
 - private-method-call
+# Line length and file length are unbounded due to Y2ROLLs need to register classes via static tooling. Would prefer long lines and files over several files purely by linting.
+- max-line-length
+- max-file-lines
+
+# Looser than gdtoolkit defaults: CONSTANT_CASE, and PascalCase, and leading underscores are accepted.
 class-variable-name: '([A-Z][A-Z0-9]*(_[A-Z0-9]+)*|_*[a-zA-Z][a-zA-Z0-9]*(_[a-zA-Z0-9]+)*)'
 constant-name: '([A-Z][A-Z0-9]*(_[A-Z0-9]+)*|_?[a-zA-Z][a-zA-Z0-9]*(_[a-zA-Z0-9]+)*)'
 excluded_directories: [".git", "addons"]
 function-argument-name: '_?[a-z][a-z0-9]*(_[a-z0-9]+)*_?'
 function-variable-name: '_?[a-z][a-z0-9]*(_[a-z0-9]+)*'
-max-file-lines: 2000
-max-line-length: 140
 max-public-methods: 60
 signal-name: '_?[a-z][a-z0-9]*(_[a-z0-9]+)*'

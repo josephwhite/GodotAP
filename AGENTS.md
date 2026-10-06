@@ -6,7 +6,7 @@ A file for [guiding coding agents](https://agents.md/).
 
 - Never commit/push/open PRs/open issues.
 - Maintain `commit.txt` as a final-state changelog:
-    - One [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/#specification) bullet per committed change, in final form. 
+    - One [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/#specification) bullet per committed change, in final overview form. 
     - No intermediate/journey states and iteration history.
 - Branch name must match `downpatch-3.6.0*` for CI.
 
@@ -19,9 +19,16 @@ A file for [guiding coding agents](https://agents.md/).
     - Must utilize the Godot Mod Loader. Other modding platforms for Godot games may also be in scope.
     - Use relative paths in favor of absolute paths.
     - While targeting Godot 3.6, bug fixes and compatibility for other Godot 3.x versions are good.
-3. **Feature parity with upstream.**
-    - Upstream: https://github.com/EmilyV99/GodotAP
-    - If an upstream feature can't be reasonably reimplemented due to Godot 3.6 limitation, drop it.
+3. [**Feature parity with upstream.**](#upstream-tracking)
+
+### Upstream Tracking
+- [Upstream branch](https://github.com/EmilyV99/GodotAP/tree/main)
+- Latest commit reviewed: `4dfa95a`
+    - As of: 2026-10-04
+- Do not merge upstream. We are too far off for merges to cleanly apply.
+- Re-review procedure when upstream is a remote repo: `git fetch [upstream-repo]`, then `git log --oneline`, and diff each commit with comments and whitespace stripped (`git show <sha> -w --unified=0`) to separate real behavior changes from reformatting.
+- If an upstream feature can't be reasonably reimplemented due to a Godot 3.6 limitation, drop it.
+- Include the upstream SHA in commit bullets with `(upstream [SHA])`
 
 ## Code Style
 - Follow Godot's GDScript style guide for all GDScript code.
@@ -66,7 +73,7 @@ A file for [guiding coding agents](https://agents.md/).
 # Setup pre-commit
 pip install pre-commit
 pre-commit install
-pre-commit install-hooks    # pre-build the gdtoolkit 3.6.0 env
+pre-commit install-hooks # pre-build the gdtoolkit 3.6.0 env
 
 # Run pre-commit
 pre-commit run
@@ -75,8 +82,7 @@ pre-commit run
 ## Tests
 
 - **GUT version: 7.4.3** (Godot 3.x).
-- Configuration: `.gutconfig.json`
-- Test results: `tests/results/test_results.xml`
+- Configuration: [`.gutconfig.json`](.gutconfig.json)
 - Rules:
     - Do not use real Archipelago servers. Mocks in integration tests should use a duck-typed fake socket.
     - Do not use real Archipelago datapackages. Mock `DataCache` in tests with fake locations and items.
@@ -89,7 +95,7 @@ Godot_v3.6.exe --no-window --path . -s addons/gut/gut_cmdln.gd -gexit
 ```
 
 ## Directory Structure
-```ps1
+```perl
 .github/                    # GitHub config.
 └── workflows/              # CI pipelines.
 addons/                     # Godot add-ons.
@@ -125,6 +131,9 @@ tests/                      # All tests for GUT.
     - [GDScript Style Guide](https://docs.godotengine.org/en/3.6/tutorials/scripting/gdscript/gdscript_styleguide.html)
 - [Godot 3.6 Source Code](https://github.com/godotengine/godot/tree/3.6)
 - [Our full generic downpatch reference](docs/DOWNPATCH.md)
-### Godot Addons/Libs
+### Godot Addons/Libs/Tools
 - [GUT: Godot Unit Test](https://github.com/bitwes/Gut/tree/godot_3x)
     - [GUT Docs](https://gut.readthedocs.io/en/godot_3x/)
+- [GDScript Toolkit](https://github.com/Scony/godot-gdscript-toolkit/tree/3.x)
+    - [gdlint Docs](https://github.com/Scony/godot-gdscript-toolkit/wiki/3.-Linter) (linter only; no formatter is run)
+
