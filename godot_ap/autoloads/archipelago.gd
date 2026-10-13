@@ -40,6 +40,8 @@ export var READABLE_DATAPACK_FILES = true
 export var datapack_cached_fields = ["item_name_to_id", "location_name_to_id", "checksum"]
 ## Size, in MB, of the websocket inbound buffer. Raising may help if large datapackages are causing disconnections.
 export(int, 5, 500, 1) var websocket_inbuffer_mb = 50
+## Size, in MB, of the websocket outbound buffer. Raising may help if large batched sends (location checks) are failing.
+export(int, 5, 500, 1) var websocket_outbuffer_mb = 50
 ## Game/engine compatibility toggles. All default to `false` (stock Godot 3.6 behavior).
 ## Each key makes the library defer to a non-native-crash implementation of a
 ## construct a custom engine build cannot execute (see docs/ENGINE_ODDITIES.md).
@@ -166,6 +168,8 @@ func _set_status(val):
 	if status != val:
 		status = val
 		emit_signal("status_updated")
+	if status == APStatus.PLAYING:
+		_handshake_failures = 0
 	if status == APStatus.DISCONNECTED:
 		conn = null
 		if _queue_reconnect:
@@ -191,6 +195,10 @@ var _wss = true  # If current connection attempt is using secure sockets. Altern
 const MAX_CONNECT_CYCLES = 5  # Full wss/ws cycles before giving up
 const CONNECT_WATCHDOG_SECS = 7.0  # Max time left in SOCKET_CONNECTING before force give-up (silent-hang guard)
 var _connect_watchdog = null  # One-shot SceneTreeTimer; 'null' while unarmed
+var _handshake_failures = 0  # Socket/handshake drops after the socket connected; bounded by MAX_HANDSHAKE_CYCLES
+const MAX_HANDSHAKE_CYCLES = 5  # Post-socket (RoomInfo/datapackage) failures before giving up
+const DATAPACK_WATCHDOG_SECS = 15.0  # Max stall while waiting for a datapackage before force give-up
+var _datapack_watchdog = null  # One-shot SceneTreeTimer; 'null' while unarmed
 
 
 ## Returns the URL currently being targetted for connection
@@ -247,6 +255,7 @@ func ap_disconnect():
 	if status == APStatus.DISCONNECTED or status == APStatus.DISCONNECTING:
 		return
 	_stop_connect_watchdog()
+	_stop_datapack_watchdog()
 	_set_status(APStatus.DISCONNECTING)
 	emit_signal("connect_step", "Disconnecting...")
 	_socket.disconnect_from_host()
@@ -281,6 +290,21 @@ func _create_socket():
 	_socket.connect("connection_closed", self, "_on_ws_closed")
 	_socket.connect("connection_error", self, "_on_ws_error")
 	_socket.connect("data_received", self, "_on_ws_data")
+	_apply_socket_buffers()
+
+
+## Applies the configured buffer sizes to `_socket`.
+## Values are in KB and must be set before connecting; `WSLClient::set_buffers` errors once the connection is valid.
+func _apply_socket_buffers():
+	if not _socket or not _socket.has_method("set_buffers"):
+		return
+	var in_kb = int(websocket_inbuffer_mb) * 1024
+	var out_kb = int(websocket_outbuffer_mb) * 1024
+	var err = _socket.set_buffers(in_kb, 1024, out_kb, 1024)
+	if err != OK:
+		error("Failed applying websocket buffers (in %d KB / out %d KB): %d" % [in_kb, out_kb, err])
+	else:
+		_log("WebSocket buffers set: in %d KB, out %d KB." % [in_kb, out_kb])
 
 
 #endregion CONNECTION
@@ -397,6 +421,7 @@ func _on_ws_connected(_protocol = ""):
 
 func _on_ws_closed(_was_clean = false):
 	_stop_connect_watchdog()
+	_stop_datapack_watchdog()
 	_socket_state = WebSocketState.STATE_CLOSED
 	if hang_clock:
 		hang_clock.stop()
@@ -405,15 +430,33 @@ func _on_ws_closed(_was_clean = false):
 		emit_signal("disconnected")
 	elif status == APStatus.DISCONNECTED:
 		pass  # Give-up path already reported teardown; ignore the late close event.
-	else:
+	elif status == APStatus.PLAYING:
 		_log("Accidental disconnection; reconnecting!")
 		ap_reconnect()
+	else:
+		# Dropped during the RoomInfo/datapackage handshake, before reaching PLAYING.
+		_handle_handshake_drop("The server closed the connection while fetching data.")
+
+
+## Bounded retry for a connection that dropped after the socket opened but before
+## reaching PLAYING (RoomInfo/datapackage phase). Prevents an unbounded loop when
+## the same failure recurs (e.g. a datapackage exceeding the receive buffer).
+func _handle_handshake_drop(reason):
+	_handshake_failures += 1
+	if _handshake_failures > MAX_HANDSHAKE_CYCLES:
+		var stage_msg = "Connection failed at the same stage %d times - raise 'websocket_inbuffer_mb' if datapackages are large, then '/reconnect'." % [_handshake_failures - 1]
+		var tip_msg = "%s Give-up after repeated failures at the same stage." % reason
+		_give_up_connecting(stage_msg, tip_msg)
+		return
+	_log("%s Reconnecting (%d/%d)." % [reason, _handshake_failures, MAX_HANDSHAKE_CYCLES])
+	ap_reconnect()
 
 
 ## Abandon a connection attempt: tear down the socket, reset to idle, and
 ## inform both hosts (signals) and console users.
 func _give_up_connecting(msg, tip):
 	_stop_connect_watchdog()
+	_stop_datapack_watchdog()
 	_socket.disconnect_from_host()
 	_set_status(APStatus.DISCONNECTED)
 	_log("Connection to '%s' failed! Giving up: %s" % [get_url(), msg])
@@ -447,6 +490,28 @@ func _on_connect_timeout():
 		)
 
 
+## Arm the datapackage stall watchdog. Rearmed on each datapackage request and
+## each datapackage received, so it detects a stall rather than total phase time.
+func _start_datapack_watchdog():
+	_stop_datapack_watchdog()
+	_datapack_watchdog = get_tree().create_timer(DATAPACK_WATCHDOG_SECS)
+	_datapack_watchdog.connect("timeout", self, "_on_datapack_timeout")
+
+
+func _stop_datapack_watchdog():
+	_datapack_watchdog = null
+
+
+## When the datapackage watchdog times out, the phase has stalled (typically an
+## oversized package that the receive buffer rejected). Give up with a clear hint.
+func _on_datapack_timeout():
+	_datapack_watchdog = null
+	if status == APStatus.CONNECTED:
+		var stage_msg = "A datapackage stopped arriving - raise 'websocket_inbuffer_mb' if packages are large, then '/reconnect'."
+		var tip_msg = "A datapackage stopped arriving. This usually means a package exceeded the receive buffer."
+		_give_up_connecting(stage_msg, tip_msg)
+
+
 ## Flip the scheme for the next ws connection attempt.
 ## Either schedule it (with backoff) or give up.
 func _advance_retry():
@@ -454,10 +519,9 @@ func _advance_retry():
 	if _wss:
 		_connect_attempts += 1
 	if _connect_attempts > MAX_CONNECT_CYCLES:
-		_give_up_connecting(
-			"Connection failed!",
-			"Failed connecting too many times. Check your connection details, or '/reconnect' to try again."
-		)
+		var stage_msg = "Connection failed!"
+		var tip_msg = "Failed connecting too many times. Check your connection details, or '/reconnect' to try again."
+		_give_up_connecting(stage_msg, tip_msg)
 		return
 	get_tree().create_timer(0.25 * _connect_attempts).connect("timeout", self, "_retry_dial")
 
@@ -479,6 +543,7 @@ func _retry_dial():
 ## ws-error event path
 func _on_ws_error():
 	_stop_connect_watchdog()
+	_stop_datapack_watchdog()
 	_socket_state = WebSocketState.STATE_CLOSED
 	if status == APStatus.SOCKET_CONNECTING:
 		if _connect_attempts >= MAX_CONNECT_CYCLES:
@@ -489,6 +554,9 @@ func _on_ws_error():
 		else:
 			_log("Connection to '%s' failed! Retrying (%d)" % [get_url(), _connect_attempts])
 			_advance_retry()
+	elif status == APStatus.CONNECTING or status == APStatus.CONNECTED:
+		# Socket error during the RoomInfo/datapackage handshake; don't swallow it.
+		_handle_handshake_drop("A socket error occurred while fetching data.")
 
 
 func _on_ws_data():
@@ -757,8 +825,9 @@ func _send_datapack_request():
 		emit_signal("connect_step", "Fetching DataPackage for '%s'..." % game)
 		var req = [{"cmd": "GetDataPackage", "games": [game]}]
 		send_packet(req)
-		_cache_datapacks()
+		_start_datapack_watchdog()
 	else:
+		_stop_datapack_watchdog()
 		emit_signal("connect_step", "All DataPackages fetched!")
 		_cache_datapacks()
 		emit_signal("all_datapacks_loaded")
