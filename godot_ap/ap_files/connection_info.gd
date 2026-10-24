@@ -288,14 +288,18 @@ func scout(location, create_as_hint, proc):
 
 func _on_locinfo(json):
 	var locs = json.get("locations", [])
+	var out = []
 	for loc in locs:
 		var locid = loc["location"] as int
-		_scout_cache[locid] = _get_ni().from(loc, false)
+		var item = _get_ni().from(loc, false)
+		_scout_cache[locid] = item
 		for proc in _scout_queue.get(locid, []):
-			proc.call_func(_scout_cache[locid])
+			proc.call_func(item)
 		_scout_queue.erase(locid)
+		out.append(item)
 	if locs.size() == slot_locations.size():
 		emit_signal("all_scout_cached")
+	return out
 
 
 ## Scouts every location into the local cache

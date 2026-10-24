@@ -82,5 +82,5 @@ func _on_ap_connected(_conn, _json):
 	update_connection(true)
 
 
-func _on_ap_disconnected():
+func _on_ap_disconnected(_reason = null):
 	update_connection(false)

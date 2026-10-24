@@ -188,7 +188,7 @@ func sort_click(mouse_button, index):
 	return false
 
 
-func reset_hints_to_empty():
+func reset_hints_to_empty(_reason = null):
 	recv_filters = {
 		LOCAL_ITEMS: recv_filters.get(LOCAL_ITEMS, true),
 	}

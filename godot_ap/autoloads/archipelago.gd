@@ -34,6 +34,8 @@ export var AP_CONSOLE_CONNECTION_AUTO = true
 export var AP_LOG_COMMUNICATION = false
 ## Enables additional logging.
 export var AP_LOG_RECIEVED = false
+## Emits item/room/bounce/link signals via `call_deferred()` instead of inline inside the WebSocket poll stack. Handshake and connection-lifecycle signals stay inline.
+export var AP_DEFER_PACKET_SIGNALS = false
 ## If true, datapackage local files will be stringified in a readable mode.
 export var READABLE_DATAPACK_FILES = true
 ## Which fields should be saved from received DataPacks.
@@ -76,8 +78,13 @@ signal connectionrefused(conn, json)
 signal connected(conn, json)
 ## Emitted when `PrintJSON` is received
 signal printjson(json, plaintext)
-## Emitted when the connection is lost
-signal disconnected
+## Emitted when the connection is lost. `reason` is one of the `DISCONNECT_*` constants.
+signal disconnected(reason)
+
+## Reasons passed to the `disconnected` signal.
+const DISCONNECT_INTENTIONAL = "intentional"
+const DISCONNECT_SOCKET_LOST = "socket_lost"
+const DISCONNECT_GAVE_UP = "gave_up"
 
 #endregion
 
@@ -87,6 +94,9 @@ signal disconnected
 signal status_updated
 ## Signals when all required datapacks have finished loading
 signal all_datapacks_loaded
+## Emitted once per WebSocket frame with all `LocationInfo` results in that frame.
+## Always deferred out of the socket-poll stack. Entries are `NetworkItem` objects.
+signal location_info_received(locs)
 ## Emitted when a location should be cleared/deleted from the world, as it has been "already collected"
 signal remove_location(loc_id)
 ## Emitted when the connection tags are updated
@@ -160,6 +170,7 @@ enum APStatus {
 	DISCONNECTING,  ## Attempting to disconnect from the server.
 }
 var _queue_reconnect = false
+var _pending_disconnect_reason = DISCONNECT_INTENTIONAL
 ## The current connection status.
 var status = APStatus.DISCONNECTED setget _set_status
 
@@ -174,7 +185,7 @@ func _set_status(val):
 		conn = null
 		if _queue_reconnect:
 			_queue_reconnect = false
-			ap_reconnect()
+			ap_reconnect(DISCONNECT_SOCKET_LOST)
 
 
 ## Returns true if there is an active Archipelago connection
@@ -206,21 +217,12 @@ func get_url():
 	return "%s://%s:%s" % ["wss" if _wss else "ws", creds.ip, creds.port]
 
 
-## Raw-TCP server reach test.
-## UNUSED: reach test disabled. Raw-TCP probes produce HTTP 400 Bad Request
-## entries in server logs. Kept only for manual diagnostics.
-## TODO: Either delete or move to some kind of "test tooling" file.
-func _server_reachable():
-	var probe_ok = Util._tcp_probe(creds.ip, int(creds.get_port()))
-	if not probe_ok:
-		error("Server '%s:%s' unreachable!" % [creds.ip, creds.get_port()])
-	return probe_ok
-
-
-## Reconnect to Archipelago with the same information as before
-func ap_reconnect():
+## Reconnect to Archipelago with the same information as before.
+## `reason` is forwarded to the `disconnected` signal if this triggers a teardown.
+func ap_reconnect(reason = DISCONNECT_INTENTIONAL):
+	_pending_disconnect_reason = reason
 	if status != APStatus.DISCONNECTED:
-		ap_disconnect()
+		ap_disconnect(reason)
 		_queue_reconnect = true
 		return
 	emit_signal("connect_step", "Connecting...")
@@ -228,6 +230,7 @@ func ap_reconnect():
 	_connect_attempts = 1
 	_wss = true
 	emit_signal("preconnect")
+	_apply_socket_buffers()
 	var err = _socket.connect_to_url(get_url())
 	if err:
 		_log("Connection to '%s' failed! Retrying (%d)" % [get_url(), _connect_attempts])
@@ -242,18 +245,20 @@ func ap_reconnect():
 func ap_connect(room_ip, room_port, slot_name, room_pwd = ""):
 	if status != APStatus.DISCONNECTED:
 		# Disconnect here so the ip/port/slot are correct in the message
-		ap_disconnect()
+		ap_disconnect(DISCONNECT_INTENTIONAL)
 	open_logger()
 	creds.update(room_ip, room_port, slot_name, room_pwd)
 	ap_reconnect()
 
 
 ## Disconnect from Archipelago server.
-func ap_disconnect():
+## `reason` is passed to the `disconnected` signal.
+func ap_disconnect(reason = DISCONNECT_INTENTIONAL):
 	if _connecting_part:
 		_connecting_part = null
 	if status == APStatus.DISCONNECTED or status == APStatus.DISCONNECTING:
 		return
+	_pending_disconnect_reason = reason
 	_stop_connect_watchdog()
 	_stop_datapack_watchdog()
 	_set_status(APStatus.DISCONNECTING)
@@ -278,10 +283,11 @@ func ap_disconnect():
 func force_disconnect():
 	if status == APStatus.DISCONNECTED:
 		return
+	_pending_disconnect_reason = DISCONNECT_INTENTIONAL
 	_socket.disconnect_from_host()
 	_create_socket()
 	_set_status(APStatus.DISCONNECTED)
-	emit_signal("disconnected")
+	emit_signal("disconnected", DISCONNECT_INTENTIONAL)
 
 
 func _create_socket():
@@ -321,8 +327,25 @@ static func _get_ap():
 
 #region LOGGING TO FILE
 
-## The current file being logged to.
-const _ap_logging_state = {"file": null}
+## Log output levels.
+enum LogVerbosity {
+	FULL,  ## File, stdout, and `_logged_message`.
+	QUIET,  ## File only.
+	OFF,  ## No file writes, stdout, or `_logged_message`. Warnings/errors still reach the engine console.
+}
+
+## The current file and verbosity being logged with.
+const _ap_logging_state = {"file": null, "verbosity": LogVerbosity.FULL}
+
+
+## Sets the logger verbosity. Defaults to `FULL` (existing behavior).
+static func set_log_verbosity(level):
+	_ap_logging_state.verbosity = clamp(int(level), LogVerbosity.FULL, LogVerbosity.OFF)
+
+
+## Returns the current logger verbosity.
+static func get_log_verbosity():
+	return _ap_logging_state.verbosity
 
 
 ## Opens the GodotAP logging file, if it isn't already open
@@ -340,10 +363,14 @@ static func close_logger():
 
 # Logs a message to the GodotAP log
 static func _log(s):
+	if _ap_logging_state.verbosity == LogVerbosity.OFF:
+		return
 	if _ap_logging_state.file:
 		_ap_logging_state.file.store_line(s)
 		if OS.is_debug_build():
 			_ap_logging_state.file.flush()  # Ensure logs are immediately flushed in case of crash
+	if _ap_logging_state.verbosity == LogVerbosity.QUIET:
+		return
 	var msg = "[AP] %s" % s
 	print(msg)
 	var _ap_signal = _get_ap()
@@ -395,6 +422,25 @@ static func dberror(s):
 		return
 	error(s)
 
+#endregion
+
+
+#region PACKET SIGNALS
+
+## Emits a signal from packet processing, optionally deferred out of the socket-poll stack.
+func _emit_packet_signal(target, signal_name, args = []):
+	if AP_DEFER_PACKET_SIGNALS:
+		call_deferred("_emit_signal_now", target, signal_name, args)
+	else:
+		_emit_signal_now(target, signal_name, args)
+
+
+## Deferred signal dispatcher. Keeps the original target even if the connection is replaced.
+func _emit_signal_now(target, signal_name, args):
+	if not is_instance_valid(target):
+		return
+	target.callv("emit_signal", [signal_name] + args)
+
 
 #endregion
 
@@ -426,13 +472,14 @@ func _on_ws_closed(_was_clean = false):
 	if hang_clock:
 		hang_clock.stop()
 	if status == APStatus.DISCONNECTING:
+		var reason = _pending_disconnect_reason
 		_set_status(APStatus.DISCONNECTED)
-		emit_signal("disconnected")
+		emit_signal("disconnected", reason)
 	elif status == APStatus.DISCONNECTED:
 		pass  # Give-up path already reported teardown; ignore the late close event.
 	elif status == APStatus.PLAYING:
 		_log("Accidental disconnection; reconnecting!")
-		ap_reconnect()
+		ap_reconnect(DISCONNECT_SOCKET_LOST)
 	else:
 		# Dropped during the RoomInfo/datapackage handshake, before reaching PLAYING.
 		_handle_handshake_drop("The server closed the connection while fetching data.")
@@ -449,7 +496,7 @@ func _handle_handshake_drop(reason):
 		_give_up_connecting(stage_msg, tip_msg)
 		return
 	_log("%s Reconnecting (%d/%d)." % [reason, _handshake_failures, MAX_HANDSHAKE_CYCLES])
-	ap_reconnect()
+	ap_reconnect(DISCONNECT_SOCKET_LOST)
 
 
 ## Abandon a connection attempt: tear down the socket, reset to idle, and
@@ -466,27 +513,30 @@ func _give_up_connecting(msg, tip):
 		_connecting_part = null
 	emit_signal("connect_step", msg)
 	emit_signal("connect_failed", msg)
-	emit_signal("disconnected")
+	emit_signal("disconnected", DISCONNECT_GAVE_UP)
 
 
 ## Arm the stuck-connection watchdog
 func _start_connect_watchdog():
 	_stop_connect_watchdog()
-	_connect_watchdog = get_tree().create_timer(CONNECT_WATCHDOG_SECS)
-	_connect_watchdog.connect("timeout", self, "_on_connect_timeout")
+	var timer = get_tree().create_timer(CONNECT_WATCHDOG_SECS)
+	_connect_watchdog = timer
+	timer.connect("timeout", self, "_on_connect_timeout", [timer])
 
 
 func _stop_connect_watchdog():
 	_connect_watchdog = null
 
 
-## When Connection Watchdog timesout, force give up.
-func _on_connect_timeout():
+## When Connection Watchdog timesout, force give up. Ignores stale timer callbacks.
+func _on_connect_timeout(timer):
+	if timer != _connect_watchdog:
+		return
 	_connect_watchdog = null
 	if status == APStatus.SOCKET_CONNECTING:
 		_give_up_connecting(
 			"Connection failed!",
-			"Server not responding — check that it is running, verify your connection details, or '/reconnect' to try again."
+			"Server not responding - check that it is running, verify your connection details, or '/reconnect' to try again."
 		)
 
 
@@ -494,8 +544,9 @@ func _on_connect_timeout():
 ## each datapackage received, so it detects a stall rather than total phase time.
 func _start_datapack_watchdog():
 	_stop_datapack_watchdog()
-	_datapack_watchdog = get_tree().create_timer(DATAPACK_WATCHDOG_SECS)
-	_datapack_watchdog.connect("timeout", self, "_on_datapack_timeout")
+	var timer = get_tree().create_timer(DATAPACK_WATCHDOG_SECS)
+	_datapack_watchdog = timer
+	timer.connect("timeout", self, "_on_datapack_timeout", [timer])
 
 
 func _stop_datapack_watchdog():
@@ -504,7 +555,9 @@ func _stop_datapack_watchdog():
 
 ## When the datapackage watchdog times out, the phase has stalled (typically an
 ## oversized package that the receive buffer rejected). Give up with a clear hint.
-func _on_datapack_timeout():
+func _on_datapack_timeout(timer):
+	if timer != _datapack_watchdog:
+		return
 	_datapack_watchdog = null
 	if status == APStatus.CONNECTED:
 		var stage_msg = "A datapackage stopped arriving - raise 'websocket_inbuffer_mb' if packages are large, then '/reconnect'."
@@ -523,6 +576,7 @@ func _advance_retry():
 		var tip_msg = "Failed connecting too many times. Check your connection details, or '/reconnect' to try again."
 		_give_up_connecting(stage_msg, tip_msg)
 		return
+	_log("Connection to '%s' failed! Retrying (%d)" % [get_url(), _connect_attempts])
 	get_tree().create_timer(0.25 * _connect_attempts).connect("timeout", self, "_retry_dial")
 
 
@@ -530,11 +584,9 @@ func _advance_retry():
 func _retry_dial():
 	if status != APStatus.SOCKET_CONNECTING:
 		return
+	_apply_socket_buffers()
 	var err = _socket.connect_to_url(get_url())
 	if err:
-		_log(
-			"Connection to '%s' failed immediately! Retrying (%d)" % [get_url(), _connect_attempts]
-		)
 		_advance_retry()
 	else:
 		_start_connect_watchdog()
@@ -546,14 +598,7 @@ func _on_ws_error():
 	_stop_datapack_watchdog()
 	_socket_state = WebSocketState.STATE_CLOSED
 	if status == APStatus.SOCKET_CONNECTING:
-		if _connect_attempts >= MAX_CONNECT_CYCLES:
-			_give_up_connecting(
-				"Connection failed!",
-				"Failed connecting too many times. Check your connection details, or '/reconnect' to try again."
-			)
-		else:
-			_log("Connection to '%s' failed! Retrying (%d)" % [get_url(), _connect_attempts])
-			_advance_retry()
+		_advance_retry()
 	elif status == APStatus.CONNECTING or status == APStatus.CONNECTED:
 		# Socket error during the RoomInfo/datapackage handshake; don't swallow it.
 		_handle_handshake_drop("A socket error occurred while fetching data.")
@@ -564,8 +609,11 @@ func _on_ws_data():
 	var json = parse_json(packet.get_string_from_utf8())
 	if not json is Array:
 		json = [json]
+	var loc_batch = []
 	for dict in json:
-		_handle_command(dict)
+		_handle_command(dict, loc_batch)
+	if not loc_batch.empty():
+		call_deferred("_emit_signal_now", self, "location_info_received", [loc_batch])
 
 
 var _printout_recieved_items = false  # Used by AP_PRINT_ITEMS_ON_CONNECT
@@ -584,8 +632,9 @@ func send_packet(obj):
 	_socket.get_peer(1).put_packet(s.to_utf8())
 
 
-## Handle an incoming packet from the server
-func _handle_command(json):
+## Handle an incoming packet from the server. `loc_batch`, when provided, collects
+## `NetworkItem`s from `LocationInfo` commands for the per-frame batch signal.
+func _handle_command(json, loc_batch = null):
 	var command = json["cmd"]
 	comm_log("RECV", str(json))
 	match command:
@@ -633,7 +682,6 @@ func _handle_command(json):
 			var slot_info = json["slot_info"]
 			for key in slot_info:
 				conn.slots.append(NetworkSlot.from(slot_info[key]))
-
 			if aplock:
 				var lock_err = aplock.lock(conn)
 				if lock_err:
@@ -643,17 +691,14 @@ func _handle_command(json):
 					_connecting_part = null
 					ap_disconnect()
 					return
-
 			for loc in json["missing_locations"]:
 				if not location_exists(loc):
 					conn.slot_locations[loc as int] = false
 					#Force this locations to be accessible?
-
 			var server_checked = {}
 			for loc in json["checked_locations"]:
 				_remove_loc(loc)
 				server_checked[int(loc)] = true
-
 			var to_collect = []
 			for loc in conn.slot_locations.keys():
 				if conn.slot_locations[loc] and not loc in server_checked:
@@ -667,12 +712,10 @@ func _handle_command(json):
 			if output_console and _connecting_part:
 				_connecting_part.text = "Connected Successfully!"
 				_connecting_part = null
-
 			emit_signal("connect_step", "Connected!")
 			if AP_PRINT_ITEMS_ON_CONNECT:
 				_printout_recieved_items = true
 				get_tree().create_timer(3).connect("timeout", self, "_reset_printout_flag")
-
 			conn._load_locations()
 			emit_signal("connected", conn, json)
 		"PrintJSON":
@@ -710,11 +753,10 @@ func _handle_command(json):
 					else:
 						items.remove(q)
 					idx += 1
-				conn.emit_signal("obtained_items", items)
-
+				_emit_packet_signal(conn, "obtained_items", [items])
 			if json["index"] == 0:
 				conn.received_items = refr_items.duplicate()
-				conn.emit_signal("refresh_items", refr_items)
+				_emit_packet_signal(conn, "refresh_items", [refr_items])
 		"RoomUpdate":
 			for loc in json.get("checked_locations", []):
 				_remove_loc(loc)
@@ -722,9 +764,9 @@ func _handle_command(json):
 				conn.players.clear()
 				for plyr in json["players"]:
 					conn.players.append(NetworkPlayer.from(plyr))
-			conn.emit_signal("roomupdate", json)
+			_emit_packet_signal(conn, "roomupdate", [json])
 		"Bounced":
-			conn.emit_signal("bounce", json)
+			_emit_packet_signal(conn, "bounce", [json])
 			var tags = json.get("tags", [])
 			if tags.has(get_deathlink_tag()):
 				var tstamp = json["data"].get("time", 0.0)
@@ -732,7 +774,7 @@ func _handle_command(json):
 					return  # Skip deaths from self
 				var source = json["data"].get("source", "")
 				var cause = json["data"].get("cause", "")
-				conn.emit_signal("deathlink", source, cause, json)
+				_emit_packet_signal(conn, "deathlink", [source, cause, json])
 			if tags.has(get_traplink_tag()):
 				var tstamp = json["data"].get("time", 0.0)
 				if abs(tstamp - last_sent_traplink_time) < 0.5:
@@ -740,9 +782,11 @@ func _handle_command(json):
 				var source = json["data"].get("source", "")
 				var trap_name = json["data"].get("trap_name", "")
 				trap_name = TRAP_LINK_ALIASES.get(trap_name, trap_name)
-				conn.emit_signal("traplink", source, trap_name, json)
+				_emit_packet_signal(conn, "traplink", [source, trap_name, json])
 		"LocationInfo":
-			conn._on_locinfo(json)
+			var locs = conn._on_locinfo(json)
+			if loc_batch != null:
+				loc_batch.append_array(locs)
 		"Retrieved":
 			conn._on_retrieve(json)
 		"SetReply":
@@ -773,7 +817,7 @@ func handle_datapackage_checksums(checksums):
 	Util._make_dir_recursive("user://ap/datapacks/")
 	var cachefile = Util._file_open("user://ap/datapacks/cache.dat", File.READ)
 	if cachefile:
-		var loaded = cachefile.get_var()
+		var loaded = cachefile.get_var(false)
 		if loaded is Dictionary:
 			_datapack_cache = loaded
 		cachefile.close()
@@ -810,7 +854,7 @@ func _handle_datapack(game, data):
 	data_file.close()
 
 
-func _noop():
+func _noop(_reason = null):
 	pass
 
 
@@ -925,7 +969,7 @@ func _receive_item(index, item):
 			]
 		)
 
-	conn.emit_signal("obtained_item", item)
+	_emit_packet_signal(conn, "obtained_item", [item])
 
 	if AP_LOG_RECIEVED:
 		_log(msg)
@@ -1211,7 +1255,10 @@ func init_command_manager(can_connect, server_autofills = true):
 
 		var cmd_disconnect = ConsoleCommand.new("/disconnect")
 		cmd_disconnect.add_help_cond(
-			"", "Kills the connection to the Archipelago server", self, "is_ap_connected"
+			"",
+			"Kills the connection to the Archipelago server",
+			self,
+			"is_ap_connected"
 		)
 		cmd_disconnect.set_call(self, "_cmd_disconnect")
 		cmd_manager.register_command(cmd_disconnect)

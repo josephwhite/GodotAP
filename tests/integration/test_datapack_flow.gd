@@ -108,14 +108,14 @@ func test_all_datapacks_loaded_fires_once_when_none_pending():
 
 func test_datapack_timeout_gives_up_with_hint():
 	_ap._set_status(3)  # APStatus.CONNECTED
-	_ap._on_datapack_timeout()
+	_ap._on_datapack_timeout(null)
 	assert_eq(_failures.size(), 1)
 	assert_string_contains(_failures[0], "websocket_inbuffer_mb")
 
 
 func test_datapack_timeout_ignored_when_not_connected():
 	_ap._set_status(0)  # APStatus.DISCONNECTED
-	_ap._on_datapack_timeout()
+	_ap._on_datapack_timeout(null)
 	assert_eq(_failures.size(), 0)
 
 

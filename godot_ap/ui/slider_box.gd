@@ -87,7 +87,7 @@ func _on_ap_connected(_conn, _json):
 		slide_to(false)
 
 
-func _on_ap_disconnected():
+func _on_ap_disconnected(_reason = null):
 	connect_btn.disabled = false
 	disconnect_btn.disabled = true
 	if _get_ap().AP_CONSOLE_CONNECTION_AUTO:
