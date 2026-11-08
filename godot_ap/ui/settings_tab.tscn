@@ -27,7 +27,7 @@ theme_constants/margin_top = 6
 theme_constants/margin_right = 6
 theme_constants/margin_bottom = 6
 script = ExtResource(2)
-themes = [NodePath("Row/Col1/DarkTheme"), NodePath("Row/Col1/LightTheme")]
+themes = [NodePath("Row/Col1/DarkTheme"), NodePath("Row/Col1/LightTheme"), NodePath("Row/Col2/AuraTheme"), NodePath("Row/Col2/Win98Theme")]
 default_theme = NodePath("Row/Col1/DarkTheme")
 
 [node name="Row" type="HBoxContainer" parent="Margin/Tabs/Theme"]
@@ -46,5 +46,19 @@ group = SubResource(1)
 text = "Light Mode"
 script = ExtResource(3)
 target_theme_path = "ui/themes/light_theme.tres"
+
+[node name="Col2" type="VBoxContainer" parent="Margin/Tabs/Theme/Row"]
+
+[node name="AuraTheme" type="CheckBox" parent="Margin/Tabs/Theme/Row/Col2"]
+group = SubResource(1)
+text = "Aura"
+script = ExtResource(3)
+target_theme_path = "ui/themes/aura_theme.tres"
+
+[node name="Win98Theme" type="CheckBox" parent="Margin/Tabs/Theme/Row/Col2"]
+group = SubResource(1)
+text = "Windows 98"
+script = ExtResource(3)
+target_theme_path = "ui/themes/win98_theme.tres"
 
 

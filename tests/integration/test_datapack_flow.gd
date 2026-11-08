@@ -22,6 +22,10 @@ func _capture_log(msg, captured):
 	captured.append(msg)
 
 
+func _capture_reason(reason, captured):
+	captured.append(reason)
+
+
 func _setup_fake_socket():
 	_ap._socket = FAKE.FakeSocket.new()
 
@@ -160,9 +164,16 @@ func test_ws_closed_playing_reconnects_without_counting():
 	_ap._queue_reconnect = false
 	_ap._set_status(4)  # APStatus.PLAYING (resets the counter)
 	_ap._handshake_failures = 3
+	var reasons = []
+	_ap.connect("disconnected", self, "_capture_reason", [reasons])
 	_ap._on_ws_closed()
+	_ap.disconnect("disconnected", self, "_capture_reason")
 	assert_eq(_ap._handshake_failures, 3)
-	assert_true(_ap._queue_reconnect)
+	# Socket is already closed
+	assert_eq(reasons, [AP.DISCONNECT_SOCKET_LOST])
+	assert_eq(_ap.status, 1)  # APStatus.SOCKET_CONNECTING
+	assert_eq(_ap._socket.disconnects, 0, "closed socket must not be disconnected again")
+	assert_eq(_ap._socket.connected_urls.size(), 1, "must redial the server")
 
 
 func test_handshake_failures_reset_on_playing():

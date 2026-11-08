@@ -6,7 +6,7 @@ var id: int
 ## The location's name.
 var name: String
 ## Priority of the location as given by a hint.
-var hint_status
+var hint_status = NetworkHint.Status.UNSPECIFIED
 
 
 static func make(locid):

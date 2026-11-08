@@ -6,6 +6,7 @@ A file for [guiding coding agents](https://agents.md/).
 
 - Never commit/push/open PRs/open issues.
 - Maintain `commit.txt` as a final-state changelog:
+    - First line is always a 2-8 word title for the summary of changes or the most important change
     - One [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/#specification) bullet per committed change, in final overview form. 
     - No intermediate/journey states and iteration history.
 - Branch name must match `downpatch-3.6.0*` for CI.
@@ -31,7 +32,7 @@ A file for [guiding coding agents](https://agents.md/).
 - Include the upstream SHA in commit bullets with `(upstream [SHA])`
 
 ## Code Style
-- Follow Godot's GDScript style guide for all GDScript code.
+- Refer to our [style guide](docs\STYLE.md).
 
 ## GodotAP-Specific Fixes & Lessons
 

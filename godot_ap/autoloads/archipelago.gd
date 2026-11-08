@@ -479,6 +479,9 @@ func _on_ws_closed(_was_clean = false):
 		pass  # Give-up path already reported teardown; ignore the late close event.
 	elif status == APStatus.PLAYING:
 		_log("Accidental disconnection; reconnecting!")
+		# The socket is already closed
+		_set_status(APStatus.DISCONNECTED)
+		emit_signal("disconnected", DISCONNECT_SOCKET_LOST)
 		ap_reconnect(DISCONNECT_SOCKET_LOST)
 	else:
 		# Dropped during the RoomInfo/datapackage handshake, before reaching PLAYING.
@@ -685,10 +688,14 @@ func _handle_command(json, loc_batch = null):
 			if aplock:
 				var lock_err = aplock.lock(conn)
 				if lock_err:
-					_connecting_part.text = "Connection Mismatch! Wrong slot for this save!"
-					for s in lock_err:
-						_connecting_part.hint_tooltip += "\n%s" % s
-					_connecting_part = null
+					var mismatch = "Connection Mismatch! Wrong slot for this save!"
+					if _connecting_part:
+						_connecting_part.text = mismatch
+						for s in lock_err:
+							_connecting_part.hint_tooltip += "\n%s" % s
+						_connecting_part = null
+					_log("%s %s" % [mismatch, str(lock_err)])
+					emit_signal("connect_step", mismatch)
 					ap_disconnect()
 					return
 			for loc in json["missing_locations"]:
