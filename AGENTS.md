@@ -24,8 +24,8 @@ A file for [guiding coding agents](https://agents.md/).
 
 ### Upstream Tracking
 - [Upstream branch](https://github.com/EmilyV99/GodotAP/tree/main)
-- Latest commit reviewed: `4dfa95a`
-    - As of: 2026-10-04
+- Latest commit reviewed: `04259a4`
+    - As of: 2026-11-08
 - Do not merge upstream. We are too far off for merges to cleanly apply.
 - Re-review procedure when upstream is a remote repo: `git fetch [upstream-repo]`, then `git log --oneline`, and diff each commit with comments and whitespace stripped (`git show <sha> -w --unified=0`) to separate real behavior changes from reformatting.
 - If an upstream feature can't be reasonably reimplemented due to a Godot 3.6 limitation, drop it.

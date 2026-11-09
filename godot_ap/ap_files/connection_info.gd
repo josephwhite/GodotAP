@@ -107,6 +107,8 @@ func get_slot(id_ = -1):
 ## If `alias` is false, will return the slot name regardless of alias
 func get_player_name(plyr_id_ = -1, alias = true):
 	var plyr_id = plyr_id_
+	if plyr_id < 0:
+		plyr_id = player_id
 	var name = get_player(plyr_id).get_name(alias)
 	if not name:
 		name = "Player %d" % plyr_id

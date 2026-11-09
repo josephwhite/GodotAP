@@ -170,7 +170,9 @@ static func make_col(txt, col, ttip = ""):
 
 func set_color(col):
 	color_override = ""
-	if col.rich:
+	if col == null:
+		rich_color = APColors.RichColor.NIL
+	elif col.rich:
 		rich_color = col.rich
 	elif col.special:
 		rich_color = APColors.special_to_rich_color(col.special)

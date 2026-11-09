@@ -79,6 +79,17 @@ func test_lock_seed_mismatch():
 	assert_true(errs[0].find("Wrong seed_name") >= 0)
 
 
+## A saved lock can point at a slot that the new room does not have.
+## Comparing slot names must report a mismatch instead of indexing past `conn.slots`.
+func test_lock_saved_slot_out_of_range_reports_mismatch():
+	var lock = _make_lock()
+	lock.lock(_make_conn(8, 0, "Alice", "seed1"))
+	var errs = lock.lock(_make_conn(2, 0, "Alice", "seed1"))
+	assert_eq(errs.size(), 2)
+	assert_true(errs[0].find("Wrong player_id") >= 0)
+	assert_true(errs[1].find("Wrong slot_name") >= 0)
+
+
 func test_multiple_mismatches():
 	var lock = _make_lock()
 	lock.lock(_make_conn(1, 0, "Alice", "seed1"))

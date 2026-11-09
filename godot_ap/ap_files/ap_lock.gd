@@ -12,11 +12,19 @@ var slot_name: String = ""
 var seed_name: String = ""
 
 
+## Returns the slot name for `slot_id`, or `null` when the id is outside `conn.slots`.
+func _slot_name(conn, slot_id):
+	if slot_id < 1 or slot_id > conn.slots.size():
+		return null
+	return conn.get_slot(slot_id).name
+
+
 func lock(conn):
 	if not valid:
 		player_id = conn.player_id
 		team_id = conn.team_id
-		slot_name = conn.get_slot(player_id).name
+		var new_slot_name = _slot_name(conn, player_id)
+		slot_name = new_slot_name if new_slot_name != null else ""
 		seed_name = conn.seed_name
 		valid = true
 		return []
@@ -25,8 +33,15 @@ func lock(conn):
 		ret.append("Wrong player_id: %d != %d" % [player_id, conn.player_id])
 	if team_id != conn.team_id:
 		ret.append("Wrong team_id: %d != %d" % [team_id, conn.team_id])
-	if slot_name != conn.get_slot(player_id).name:
-		ret.append("Wrong slot_name: %s != %s" % [slot_name, conn.get_slot(player_id).name])
+	var current_slot_name = _slot_name(conn, player_id)
+	if current_slot_name == null or slot_name != current_slot_name:
+		ret.append(
+			"Wrong slot_name: %s != %s"
+			% [
+				slot_name,
+				current_slot_name if current_slot_name != null else "(no such slot)"
+			]
+		)
 	if seed_name != conn.seed_name:
 		ret.append("Wrong seed_name: %s != %s" % [seed_name, conn.seed_name])
 	return ret

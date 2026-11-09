@@ -26,6 +26,8 @@ func get_spacing():
 
 
 export var scroll_to_bottom_on_new_message = false
+## Maximum number of elements that can be in the parts container. Setting to 0 disables this.
+export var max_parts = 1000
 
 
 func pop_dropdown(target):
@@ -57,6 +59,12 @@ func add(part):
 		pc = get_node(pc)
 	if pc:
 		pc.add_child(part)
+		if max_parts > 0:
+			# Remove excess elements
+			var num_to_queue_free = pc.get_child_count() - max_parts
+			if num_to_queue_free > 0:
+				for i in range(num_to_queue_free):
+					pc.get_child(i).queue_free()
 	update()
 	return part
 
@@ -351,7 +359,8 @@ func printjson_command(json):
 				if ni.src_player_id == _get_ap().conn.player_id:
 					output_data = true
 		"Join", "Part":
-			var data = json["data"]
+			# Copy so the packet seen by `printjson` subscribers stays intact.
+			var data = json["data"].duplicate(true)
 			var elem = data.pop_front()
 			var plyr = _get_ap().conn.get_player(json["slot"])
 			var spl = (elem["text"] as String).split(plyr.get_name(), true, 1)
@@ -449,6 +458,8 @@ func printjson_out(elems, flowbox):
 						pass  #part.underline = true
 					_:
 						part.color = APColors.color_from_name(part, col_str, part.color)
+			_:
+				part = make_text(txt)
 		s += part.text
 		flowbox.add_text_split(part)
 	return s

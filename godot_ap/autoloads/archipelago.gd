@@ -998,6 +998,9 @@ func _receive_item(index, item):
 ## Send a signal to remove a location from the world.
 func _remove_loc(loc_id):
 	var lid = int(loc_id)
+	if lid < 0:
+		# Pseudo Archipelago locations (Cheat Console / Starting Inventory) are not real locations.
+		return
 	if conn and not conn.slot_locations.get(lid, false):
 		conn.slot_locations[lid] = true
 		emit_signal("remove_location", lid)
