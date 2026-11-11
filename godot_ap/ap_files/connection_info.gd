@@ -157,6 +157,10 @@ signal deathlink(source, cause, json)
 ## Emitted when a `Bounce` packet of type `TrapLink` is received, after the `bounce` signal.
 ## 'trap_name' will be the trap name AFTER resolving the received name through `TRAP_LINK_ALIASES`.
 signal traplink(source, trap_name, json)
+## Emitted when a `Bounce` packet of type `KnockbackLink` is received, after the `bounce` signal.
+## 'value' is the scaled delta-velocity: +x east, +y up, +z south.
+## 'uuid' is the sender's per-session identifier, or empty when the sender did not include one.
+signal knockbacklink(source, cause, value, uuid, json)
 
 ## Emitted when a `SetReply` packet is received
 signal setreply(json)
@@ -357,3 +361,59 @@ func send_traplink(trap_name):
 	_get_ap().last_sent_traplink_time = OS.get_unix_time()
 	cmd["data"]["time"] = _get_ap().last_sent_traplink_time
 	send_bounce(cmd, [], [], [_get_ap().get_traplink_tag()])
+
+
+## Sends a `Bounce` packet designed for the `KnockbackLink` feature.
+## Requires `KnockbackLink` being enabled (see 'Archipelago.set_knockbacklink()')
+## `value` may be a Vector3, Vector2, or a dictionary with x/y/z components.
+## Vector2 maps to x/y with z = 0. Scaling is up to the game.
+func send_knockbacklink(value, cause = ""):
+	if not _get_ap().is_knockbacklink():
+		_get_ap().log("Tried to send KnockbackLink while KnockbackLink is not enabled!")
+		return
+	var knockback = knockback_value_to_dict(value)
+	if knockback == null:
+		_get_ap().log("Tried to send KnockbackLink with an invalid value!")
+		return
+	var cmd = {"data": {}}
+	cmd["data"]["source"] = get_player_name(-1, false)
+	cmd["data"]["uuid"] = _get_ap().knockbacklink_uuid
+	if not cause.empty():
+		cmd["data"]["cause"] = cause
+	cmd["data"]["time"] = OS.get_unix_time()
+	cmd["data"]["value"] = knockback
+	send_bounce(cmd, [], [], [_get_ap().get_knockbacklink_tag()])
+
+
+## Converts a KnockbackLink `value` payload to a Vector3.
+## Returns `null` when the payload is not a dictionary of numeric components.
+static func knockback_value_to_vector3(value):
+	if typeof(value) != TYPE_DICTIONARY:
+		return null
+	var x = value.get("x", 0.0)
+	var y = value.get("y", 0.0)
+	var z = value.get("z", 0.0)
+	for c in [x, y, z]:
+		var t = typeof(c)
+		if t != TYPE_INT and t != TYPE_REAL:
+			return null
+	return Vector3(float(x), float(y), float(z))
+
+
+## Converts a Vector3, Vector2, or `{x, y, z}` dictionary to a KnockbackLink `value` payload.
+## Returns `null` for unsupported inputs.
+static func knockback_value_to_dict(value):
+	if typeof(value) == TYPE_VECTOR3:
+		return {"x": value.x, "y": value.y, "z": value.z}
+	if typeof(value) == TYPE_VECTOR2:
+		return {"x": value.x, "y": value.y, "z": 0.0}
+	if typeof(value) == TYPE_DICTIONARY:
+		var ret = {}
+		for axis in ["x", "y", "z"]:
+			var c = value.get(axis, 0.0)
+			var t = typeof(c)
+			if t != TYPE_INT and t != TYPE_REAL:
+				return null
+			ret[axis] = float(c)
+		return ret
+	return null

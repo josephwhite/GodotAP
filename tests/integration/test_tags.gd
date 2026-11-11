@@ -58,6 +58,10 @@ func _on_traplink(source, trap_name, _json):
 	_logged.append("traplink:%s:%s" % [source, trap_name])
 
 
+func _on_knockbacklink(source, _cause, _value, _uuid, _json):
+	_logged.append("knockbacklink:%s" % source)
+
+
 func _on_bounce(_json):
 	_bounced += 1
 
@@ -204,7 +208,10 @@ func test_nongame_status_by_confirmed_tags():
 		assert_true(_ap._check_nongame_client(), "tag %s marks nongame" % tag)
 		_ap.set_tag(tag, false)
 	# Is (or can be) a game
-	for tag in [_ap.get_deathlink_tag(), _ap.get_traplink_tag(), "NoText"]:
+	var game_tags = [
+		_ap.get_deathlink_tag(), _ap.get_traplink_tag(), _ap.get_knockbacklink_tag(), "NoText"
+	]
+	for tag in game_tags:
 		_ap.set_tag(tag)
 		assert_false(_ap._check_nongame_client(), "tag %s keeps nongame false" % tag)
 		_ap.set_tag(tag, false)
@@ -442,6 +449,86 @@ func test_bounce_untagged_fires_bounce_but_no_derived():
 
 #endregion
 
+#region Bounce - Custom/Unknown Tags
+
+
+## Unknown tags still fire the raw bounce signal without link handling.
+func test_bounce_custom_tag_fires_bounce_only():
+	_setup_conn()
+	_ap.conn.connect("deathlink", self, "_on_deathlink")
+	_ap.conn.connect("traplink", self, "_on_traplink")
+	_ap.conn.connect("knockbacklink", self, "_on_knockbacklink")
+	_ap.set_deathlink(true)
+	_ap.set_traplink(true)
+	_receive_from_server(
+		'{"cmd":"Bounced","tags":["MyCustomTag"],"data":{"source":"Eve","cause":"custom"}}'
+	)
+	assert_eq(_logged, [])
+	assert_eq(_bounced, 1)
+
+
+## Arbitrary tags round-trip through the generic Bounce API.
+func test_send_bounce_custom_tag():
+	_setup_conn()
+	_ap.conn.send_bounce({"data": {"foo": "bar"}}, [], [], ["MyCustomTag"])
+	var frame = _last_sent()
+	assert_eq(frame["cmd"], "Bounce")
+	assert_eq_deep(frame["tags"], ["MyCustomTag"])
+	assert_eq_deep(frame["data"], {"foo": "bar"})
+	assert_false(frame.has("games"))
+	assert_false(frame.has("slots"))
+
+
+#endregion
+
+#region Bounce - Send Targets
+
+
+func test_send_bounce_target_games():
+	_setup_conn()
+	_ap.conn.send_bounce({"data": {"foo": "bar"}}, ["Game A"], [], [])
+	var frame = _last_sent()
+	assert_eq(frame["cmd"], "Bounce")
+	assert_eq_deep(frame["games"], ["Game A"])
+	assert_eq_deep(frame["data"], {"foo": "bar"})
+	assert_false(frame.has("slots"))
+	assert_false(frame.has("tags"))
+
+
+## Slots are JSON ints, which parse back as floats in Godot 3.6.
+func test_send_bounce_target_slots():
+	_setup_conn()
+	_ap.conn.send_bounce({"data": {"foo": "bar"}}, [], [1, 2], [])
+	var frame = _last_sent()
+	assert_eq(frame["cmd"], "Bounce")
+	assert_eq(frame["slots"].size(), 2)
+	assert_eq(int(frame["slots"][0]), 1)
+	assert_eq(int(frame["slots"][1]), 2)
+	assert_eq_deep(frame["data"], {"foo": "bar"})
+	assert_false(frame.has("games"))
+	assert_false(frame.has("tags"))
+
+
+func test_send_bounce_all_targets():
+	_setup_conn()
+	_ap.conn.send_bounce({"data": {"foo": "bar"}}, ["Game A"], [1], ["MyCustomTag"])
+	var frame = _last_sent()
+	assert_eq(frame["cmd"], "Bounce")
+	assert_eq_deep(frame["games"], ["Game A"])
+	assert_eq(int(frame["slots"][0]), 1)
+	assert_eq_deep(frame["tags"], ["MyCustomTag"])
+	assert_eq_deep(frame["data"], {"foo": "bar"})
+
+
+## A Bounce with no targets is not broadcast.
+func test_send_bounce_no_targets_not_sent():
+	_setup_conn()
+	_ap.conn.send_bounce({"data": {"foo": "bar"}}, [], [], [])
+	assert_eq(_ap._socket.peer.sent.size(), 0)
+
+
+#endregion
+
 #region Bounce - DeathLink/TrapLink Recieves
 
 
@@ -622,25 +709,5 @@ func test_send_traplink_blocked_when_grouped_link_off():
 	_ap.set_traplink_group("g2")
 	_ap.conn.send_traplink("trap")
 	assert_eq(_ap._socket.peer.sent.size(), 0)
-
-#endregion
-
-#region Bounce - Custom Links/Tags
-
-func test_knockbacklink_send():
-	_setup_conn_with_player()
-	_ap.set_tag("KnockbackLink")
-	var knockback = Vector3(10, 5, 1)
-	var cmd = {"data": {}}
-	cmd["data"]["source"] = _ap.conn.get_player_name(-1, false)
-	cmd["data"]["source"] = ""
-	cmd["data"]["time"] = OS.get_unix_time()
-	cmd["data"]["value"] = {"x": knockback.x, "y": knockback.y, "z": knockback.z}
-	_ap.conn.send_bounce(cmd, [], [], ["KnockbackLink"])
-	# Did we send?
-	var frame = _last_sent()
-	assert_eq(frame["cmd"], "Bounce")
-	assert_eq_deep(frame["tags"], ["KnockbackLink"])
-
 
 #endregion

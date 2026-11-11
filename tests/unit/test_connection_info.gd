@@ -37,3 +37,53 @@ func test_get_player_name_explicit_unnamed_player():
 func test_get_player_name_resolves_name():
 	var conn = _make_conn(1, ["Alice"])
 	assert_eq(conn.get_player_name(), "Alice")
+
+
+## Incoming KnockbackLink values are always exposed as a Vector3.
+func test_knockback_value_to_vector3_full():
+	var vec = Vector3(1, 2, 3)
+	assert_eq(
+		ConnectionInfo.knockback_value_to_vector3({"x": 1, "y": 2, "z": 3}),
+		vec
+	)
+
+
+func test_knockback_value_to_vector3_partial():
+	var vec = Vector3(1, 2, 0)
+	assert_eq(
+		ConnectionInfo.knockback_value_to_vector3({"x": 1, "y": 2}),
+		vec
+	)
+
+
+func test_knockback_value_to_vector3_invalid():
+	assert_null(ConnectionInfo.knockback_value_to_vector3("nope"))
+	assert_null(ConnectionInfo.knockback_value_to_vector3({"x": "nope"}))
+	assert_null(ConnectionInfo.knockback_value_to_vector3(null))
+
+
+func test_knockback_value_to_dict_vector3():
+	var vec = Vector3(1, 2, 3)
+	assert_eq_deep(
+		ConnectionInfo.knockback_value_to_dict(vec),
+		{"x": 1.0, "y": 2.0, "z": 3.0}
+	)
+
+
+func test_knockback_value_to_dict_vector2():
+	var vec = Vector2(1, 2)
+	assert_eq_deep(
+		ConnectionInfo.knockback_value_to_dict(vec), {"x": 1.0, "y": 2.0, "z": 0.0}
+	)
+
+
+func test_knockback_value_to_dict_dictionary():
+	assert_eq_deep(
+		ConnectionInfo.knockback_value_to_dict({"x": 1, "z": 3}),
+		{"x": 1.0, "y": 0.0, "z": 3.0}
+	)
+
+
+func test_knockback_value_to_dict_invalid():
+	assert_null(ConnectionInfo.knockback_value_to_dict("nope"))
+	assert_null(ConnectionInfo.knockback_value_to_dict({"x": "nope"}))

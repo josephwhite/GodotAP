@@ -132,6 +132,10 @@ var deathlink_group = "" setget set_deathlink_group, get_deathlink_group
 ## The group that is used for TrapLink for this connection
 var traplink_group = "" setget set_traplink_group, get_traplink_group
 
+## Per-session identifier sent with KnockbackLink packets.
+## Bounced knockbacks carrying this uuid came from this client and are skipped.
+var knockbacklink_uuid = ""
+
 ## The current connection credentials to be used
 var creds = null
 ## The current APLock object. A default lock object is `unlocked`.
@@ -790,6 +794,20 @@ func _handle_command(json, loc_batch = null):
 				var trap_name = json["data"].get("trap_name", "")
 				trap_name = TRAP_LINK_ALIASES.get(trap_name, trap_name)
 				_emit_packet_signal(conn, "traplink", [source, trap_name, json])
+			if tags.has(get_knockbacklink_tag()):
+				var data = json.get("data", {})
+				var value = null
+				if data is Dictionary:
+					value = ConnectionInfo.knockback_value_to_vector3(data.get("value"))
+				if value == null:
+					_log("[KNOCKBACKLINK] Ignoring packet with invalid value: %s" % str(json))
+				else:
+					var uuid = str(data.get("uuid", ""))
+					if not uuid.empty() and uuid == knockbacklink_uuid:
+						return  # Skip our own knockback
+					var source = str(data.get("source", ""))
+					var cause = str(data.get("cause", ""))
+					_emit_packet_signal(conn, "knockbacklink", [source, cause, value, uuid, json])
 		"LocationInfo":
 			var locs = conn._on_locinfo(json)
 			if loc_batch != null:
@@ -1387,6 +1405,7 @@ func _init():
 
 
 func _ready():
+	knockbacklink_uuid = APConfigManager.generate_uuid()
 	_update_tags()
 	if AP_AUTO_OPEN_CONSOLE:
 		# Delayed to prevent some warnings
@@ -1703,7 +1722,13 @@ func _autofill_set_tag(msg):
 	var ret = []
 	var opts = []
 	if arg_count < 3:
-		opts = ["TextOnly", "HintGame", "Tracker", get_deathlink_tag()]
+		opts = [
+			"TextOnly",
+			"HintGame",
+			"Tracker",
+			get_deathlink_tag(),
+			get_knockbacklink_tag()
+		]
 		var matched = false
 		for opt in opts:
 			if args[1] == opt:
@@ -1863,9 +1888,14 @@ func set_tags(tags):
 		_update_tags()
 
 
-## Sets the Archipelago connection tags (overwrites tags except supported tags 'DeathLink' / 'TrapLink')
+## Sets the Archipelago connection tags
+## (overwrites tags except supported tags 'DeathLink' / 'TrapLink' / 'KnockbackLink')
 func set_misc_tags(tags):
-	var supported_tags = [get_deathlink_tag(), get_traplink_tag()]
+	var supported_tags = [
+		get_deathlink_tag(),
+		get_traplink_tag(),
+		get_knockbacklink_tag()
+	]
 	tags = tags.duplicate()
 	for tag in supported_tags:
 		if tag in AP_GAME_TAGS:
@@ -1955,6 +1985,21 @@ func set_traplink(state):
 ## Check if 'TrapLink' is on
 func is_traplink():
 	return has_tag(get_traplink_tag())
+
+
+## Returns the tag being used for KnockbackLink
+func get_knockbacklink_tag():
+	return "KnockbackLink"
+
+
+## Turn 'KnockbackLink' on or off
+func set_knockbacklink(state):
+	set_tag(get_knockbacklink_tag(), state)
+
+
+## Check if 'KnockbackLink' is on
+func is_knockbacklink():
+	return has_tag(get_knockbacklink_tag())
 
 
 ## Archipelago client statuses.
