@@ -315,8 +315,16 @@ func force_scout_all():
 	)
 
 
-## Sends a `Bounce` packet with whatever information you like
-func send_bounce(data, target_games, target_slots, target_tags):
+## Sends a `Bounce` packet with whatever information you like.
+## `target_teams` defaults to your own team when omitted.
+## `operator` controls how targets combine: "legacy" (server default), "or", or "and".
+## Under "legacy", teams must match and at least one of games/slots/tags must match.
+func send_bounce(
+	data, target_games, target_slots, target_tags, target_teams = [], operator = ""
+):
+	if not operator.empty() and not operator in ["legacy", "or", "and"]:
+		_get_ap().log("Tried to send Bounce with an unknown operator: %s" % operator)
+		return
 	var cmd = {}
 	if target_games:
 		cmd["games"] = target_games
@@ -324,6 +332,10 @@ func send_bounce(data, target_games, target_slots, target_tags):
 		cmd["slots"] = target_slots
 	if target_tags:
 		cmd["tags"] = target_tags
+	if target_teams:
+		cmd["teams"] = target_teams
+	if not operator.empty():
+		cmd["operator"] = operator
 	if not cmd:
 		return
 	cmd.merge(data)

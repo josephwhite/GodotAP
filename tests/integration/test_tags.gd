@@ -493,6 +493,8 @@ func test_send_bounce_target_games():
 	assert_eq_deep(frame["data"], {"foo": "bar"})
 	assert_false(frame.has("slots"))
 	assert_false(frame.has("tags"))
+	assert_false(frame.has("teams"))
+	assert_false(frame.has("operator"))
 
 
 ## Slots are JSON ints, which parse back as floats in Godot 3.6.
@@ -511,13 +513,40 @@ func test_send_bounce_target_slots():
 
 func test_send_bounce_all_targets():
 	_setup_conn()
-	_ap.conn.send_bounce({"data": {"foo": "bar"}}, ["Game A"], [1], ["MyCustomTag"])
+	_ap.conn.send_bounce({"data": {"foo": "bar"}}, ["Game A"], [1], ["MyCustomTag"], [0], "and")
 	var frame = _last_sent()
 	assert_eq(frame["cmd"], "Bounce")
 	assert_eq_deep(frame["games"], ["Game A"])
 	assert_eq(int(frame["slots"][0]), 1)
 	assert_eq_deep(frame["tags"], ["MyCustomTag"])
+	assert_eq(int(frame["teams"][0]), 0)
+	assert_eq(frame["operator"], "and")
 	assert_eq_deep(frame["data"], {"foo": "bar"})
+
+
+## Teams alone are a valid target set under the "or" operator.
+func test_send_bounce_target_teams():
+	_setup_conn()
+	_ap.conn.send_bounce({"data": {"foo": "bar"}}, [], [], [], [0, 1], "or")
+	var frame = _last_sent()
+	assert_eq(frame["cmd"], "Bounce")
+	assert_eq(frame["teams"].size(), 2)
+	assert_eq(int(frame["teams"][0]), 0)
+	assert_eq(int(frame["teams"][1]), 1)
+	assert_eq(frame["operator"], "or")
+	assert_eq_deep(frame["data"], {"foo": "bar"})
+	assert_false(frame.has("games"))
+	assert_false(frame.has("slots"))
+	assert_false(frame.has("tags"))
+
+
+## Unknown operators are rejected before the packet is sent.
+func test_send_bounce_invalid_operator_not_sent():
+	_setup_conn()
+	_ap.conn.send_bounce({"data": {"foo": "bar"}}, [], [], ["MyCustomTag"], [], "xor")
+	assert_eq(_ap._socket.peer.sent.size(), 0)
+	assert_eq(_logged.size(), 1)
+	assert_string_contains(_logged[0], "unknown operator")
 
 
 ## A Bounce with no targets is not broadcast.
